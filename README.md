@@ -12,23 +12,26 @@
 
 [中文 README](README.CN.md)
 
+<img width="870" height="621" alt="image" src="https://github.com/user-attachments/assets/1f94cb0d-d0f7-4d63-8864-2c253d62358f" />
+<img width="870" height="621" alt="image" src="https://github.com/user-attachments/assets/b7f89322-ac52-4860-b4c5-aa84c43c4ebc" />
+
 Render custom scrolling text, clock, hardware sensors and pixel art on OpenRGB matrices.
 
 # 🛠️ Download
 ## OpenRGB 0.9+ Pipeline/Next (Plugin API Version 5)
-- [Windows 64](#)
-- [Linux amd64](#)
-- [Linux arm64](#)
-- [Linux armhf](#)
-- [Linux i386](#)
+- [Windows 64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux amd64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux arm64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux armhf](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux i386](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
 
 ## OpenRGB 1.0 RC - 1.0 RC3 (Plugin API Version 4)
-- [Windows 86](#)
-- [Windows 64](#)
-- [Linux amd64](#)
-- [Linux arm64](#)
-- [Linux armhf](#)
-- [Linux i386](#)
+- [Windows 86](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Windows 64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux amd64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux arm64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux armhf](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux i386](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
 
 You can get older releases [here](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases).
 

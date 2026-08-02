@@ -12,23 +12,26 @@
 
 [English README](README.md)
 
+<img width="870" height="621" alt="image" src="https://github.com/user-attachments/assets/1f94cb0d-d0f7-4d63-8864-2c253d62358f" />
+<img width="870" height="621" alt="image" src="https://github.com/user-attachments/assets/b7f89322-ac52-4860-b4c5-aa84c43c4ebc" />
+
 在 OpenRGB 像素屏上渲染自定义滚动文字、时钟、硬件传感器和像素艺术。
 
 # 🛠️ 下载
 ## OpenRGB 0.9+ Pipeline/Next（插件 API 版本 5）
-- [Windows 64](#)
-- [Linux amd64](#)
-- [Linux arm64](#)
-- [Linux armhf](#)
-- [Linux i386](#)
+- [Windows 64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux amd64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux arm64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux armhf](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux i386](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
 
 ## OpenRGB 1.0 RC - 1.0 RC3（插件 API 版本 4）
-- [Windows 86](#)
-- [Windows 64](#)
-- [Linux amd64](#)
-- [Linux arm64](#)
-- [Linux armhf](#)
-- [Linux i386](#)
+- [Windows 86](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Windows 64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux amd64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux arm64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux armhf](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
+- [Linux i386](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
 
 你可以在这里获取旧版本发布包：[GitHub Releases](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)。
 
