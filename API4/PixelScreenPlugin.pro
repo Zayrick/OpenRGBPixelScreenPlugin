@@ -102,14 +102,16 @@ FORMS +=                                                                        
     PixelScreenTab.ui                                                                           \
 
 # Platform configurations
-win32:CONFIG += QTPLUGIN c++17
-win32:CONFIG(debug, debug|release) {
-    win32:DESTDIR = debug
+CONFIG += c++17
+
+CONFIG(debug, debug|release) {
+    DESTDIR = debug
 }
-win32:CONFIG(release, debug|release) {
-    win32:DESTDIR = release
+CONFIG(release, debug|release) {
+    DESTDIR = release
 }
 
+win32:CONFIG += QTPLUGIN
 win32:OBJECTS_DIR = _intermediate_$$DESTDIR/.obj
 win32:MOC_DIR     = _intermediate_$$DESTDIR/.moc
 win32:RCC_DIR     = _intermediate_$$DESTDIR/.qrc

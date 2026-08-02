@@ -1,0 +1,195 @@
+name: Plugin Builds
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+      - '*'
+    paths:
+      - 'API4/**'
+      - 'API5/**'
+      - '.github/workflows/plugin-builds.yml'
+  pull_request:
+    paths:
+      - 'API4/**'
+      - 'API5/**'
+      - '.github/workflows/plugin-builds.yml'
+  workflow_dispatch:
+  release:
+    types: [published]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
+
+jobs:
+  build-windows:
+    name: ${{ matrix.api }} / Windows ${{ matrix.arch }}
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # API 4 Windows (x64 and x86 / 32-bit)
+          - api: API4
+            arch: x64
+            qt-version: '5.15.2'
+            qt-arch: win64_msvc2019_64
+            msvc-arch: x64
+            build-dir: API4
+          - api: API4
+            arch: x86
+            qt-version: '5.15.2'
+            qt-arch: win32_msvc2019
+            msvc-arch: x86
+            build-dir: API4
+          # API 5 Windows (x64)
+          - api: API5
+            arch: x64
+            qt-version: '6.8.3'
+            qt-arch: win64_msvc2022_64
+            msvc-arch: x64
+            build-dir: API5
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Qt ${{ matrix.qt-version }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt-version }}
+          arch: ${{ matrix.qt-arch }}
+          cache: false
+
+      - name: Setup MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc-arch }}
+
+      - name: Build plugin
+        shell: cmd
+        working-directory: ${{ matrix.build-dir }}
+        run: |
+          qmake.exe PixelScreenPlugin.pro "CONFIG+=release"
+          nmake
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.api }}-Windows-${{ matrix.arch }}
+          path: |
+            ${{ matrix.build-dir }}/release/**
+            ${{ matrix.build-dir }}/*.dll
+            ${{ matrix.build-dir }}/PixelScreenPlugin.json
+
+  build-linux:
+    name: ${{ matrix.api }} / Linux ${{ matrix.platform }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # API 4 Linux (amd64, i386, arm64, armhf)
+          - api: API4
+            platform: linux/amd64
+            arch-name: amd64
+            qt-package: qtbase5-dev
+            qmake-cmd: qmake
+            build-dir: API4
+          - api: API4
+            platform: linux/386
+            arch-name: i386
+            qt-package: qtbase5-dev
+            qmake-cmd: qmake
+            build-dir: API4
+          - api: API4
+            platform: linux/arm64
+            arch-name: arm64
+            qt-package: qtbase5-dev
+            qmake-cmd: qmake
+            build-dir: API4
+          - api: API4
+            platform: linux/arm/v7
+            arch-name: armhf
+            qt-package: qtbase5-dev
+            qmake-cmd: qmake
+            build-dir: API4
+          # API 5 Linux (amd64, i386, arm64, armhf)
+          - api: API5
+            platform: linux/amd64
+            arch-name: amd64
+            qt-package: qt6-base-dev
+            qmake-cmd: qmake6
+            build-dir: API5
+          - api: API5
+            platform: linux/386
+            arch-name: i386
+            qt-package: qt6-base-dev
+            qmake-cmd: qmake6
+            build-dir: API5
+          - api: API5
+            platform: linux/arm64
+            arch-name: arm64
+            qt-package: qt6-base-dev
+            qmake-cmd: qmake6
+            build-dir: API5
+          - api: API5
+            platform: linux/arm/v7
+            arch-name: armhf
+            qt-package: qt6-base-dev
+            qmake-cmd: qmake6
+            build-dir: API5
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Enable Linux QEMU emulation
+        if: matrix.platform != 'linux/amd64'
+        run: docker run --privileged --rm tonistiigi/binfmt --install all
+
+      - name: Build plugin in Docker container
+        env:
+          TARGET_PLATFORM: ${{ matrix.platform }}
+          QT_PACKAGE: ${{ matrix.qt-package }}
+          QMAKE_CMD: ${{ matrix.qmake-cmd }}
+          BUILD_DIR: ${{ matrix.build-dir }}
+        run: |
+          set -euo pipefail
+          docker run --rm --platform "$TARGET_PLATFORM" \
+            -e QT_PACKAGE \
+            -e QMAKE_CMD \
+            -e BUILD_DIR \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            -w /work \
+            debian:bookworm \
+            bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y --no-install-recommends build-essential pkg-config "$QT_PACKAGE" libgl1-mesa-dev
+              cd "$BUILD_DIR"
+              "$QMAKE_CMD" PixelScreenPlugin.pro "CONFIG+=release"
+              make -j"$(nproc)"
+              chown -R "$HOST_UID:$HOST_GID" .
+            '
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.api }}-Linux-${{ matrix.arch-name }}
+          path: |
+            ${{ matrix.build-dir }}/release/**
+            ${{ matrix.build-dir }}/*.so
+            ${{ matrix.build-dir }}/PixelScreenPlugin.json

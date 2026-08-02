@@ -1,0 +1,137 @@
+# Pixel Screen Plugin
+![Github All Releases](https://img.shields.io/github/downloads/qiangqiang101/OpenRGBPixelScreenPlugin/total.svg)
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/qiangqiang101/OpenRGBPixelScreenPlugin)
+![GitHub](https://img.shields.io/github/license/qiangqiang101/OpenRGBPixelScreenPlugin)
+![GitHub branch checks state](https://img.shields.io/github/checks-status/qiangqiang101/OpenRGBPixelScreenPlugin/master)
+![GitHub issues](https://img.shields.io/github/issues/qiangqiang101/OpenRGBPixelScreenPlugin)
+![GitHub forks](https://img.shields.io/github/forks/qiangqiang101/OpenRGBPixelScreenPlugin?style=social)
+![GitHub Repo stars](https://img.shields.io/github/stars/qiangqiang101/OpenRGBPixelScreenPlugin?style=social)
+![YouTube Channel Subscribers](https://img.shields.io/youtube/channel/subscribers/UCAZlasvEy1euunP1M7nwj5Q?style=social)
+[![Donate via PayPal](https://img.shields.io/badge/Donate-Paypal-brightgreen)](https://paypal.me/imnotmental)
+[![Follow on Patreon](https://img.shields.io/badge/Donate-Patreon-orange)](https://www.patreon.com/imnotmental)
+
+[English README](README.md)
+
+在 OpenRGB 像素屏上渲染自定义滚动文字、时钟、硬件传感器和像素艺术。
+
+# 🛠️ 下载
+## OpenRGB 0.9+ Pipeline/Next（插件 API 版本 5）
+- [Windows 64](#)
+- [Linux amd64](#)
+- [Linux arm64](#)
+- [Linux armhf](#)
+- [Linux i386](#)
+
+## OpenRGB 1.0 RC - 1.0 RC3（插件 API 版本 4）
+- [Windows 86](#)
+- [Windows 64](#)
+- [Linux amd64](#)
+- [Linux arm64](#)
+- [Linux armhf](#)
+- [Linux i386](#)
+
+你可以在这里获取旧版本发布包：[GitHub Releases](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)。
+
+# 🔨 自行编译
+
+这个仓库包含两个插件版本，每个版本都对应不同的 OpenRGB 插件 API：
+
+- `API5/` — 适用于 OpenRGB 0.9+ / Pipeline / Next（插件 API 5）
+- `API4/` — 适用于 OpenRGB 1.0 RC / 更早版本（插件 API 4）
+
+请根据你打算运行的 OpenRGB 版本使用对应的目录。
+
+## 先决条件
+
+在编译之前，请安装：
+
+- Git
+- 带有 `qmake` 的 Qt 开发环境
+- 支持 C++17 的编译器
+- 本仓库中各 API 目录下自带的 OpenRGB 源代码（`API4/OpenRGB` 或 `API5/OpenRGB`）
+
+推荐的 Qt 版本：
+
+- OpenRGB 0.9+ / API 5：Qt 6.8.x
+- OpenRGB 1.0 RC / API 4：Qt 5.15.x
+
+### Windows
+
+- 安装带有 MSVC 工具链和 `qmake` 的 Qt
+- 安装 Visual Studio C++ 构建工具或兼容的编译器
+- 打开 Qt 环境命令行（例如 Qt 6 x64 Native Tools Command Prompt 或 Qt Creator）
+
+### Linux
+
+安装常见的 Qt 构建依赖，例如：
+
+- Debian/Ubuntu：
+  `sudo apt install git build-essential qtcreator qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libusb-1.0-0-dev libhidapi-dev pkgconf libmbedtls-dev qttools5-dev-tools`
+
+- Fedora：
+  `sudo dnf install automake gcc-c++ git hidapi-devel libusbx-devel mbedtls-devel pkgconf qt5-qtbase-devel qt5-linguist`
+
+如果是基于 Qt 6 的构建，请改用对应的 Qt 6 开发包，而不是 Qt 5 包。
+
+## 使用 Qt Creator 构建（推荐）
+
+1. 使用子模块克隆仓库：
+   `git clone --recurse-submodules https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin.git`
+2. 在 Qt Creator 中打开对应的项目文件：
+   - `API5/PixelScreenPlugin.pro`
+   - 或 `API4/PixelScreenPlugin.pro`
+3. 选择目标所需的 Qt 套件和编译器。
+4. 运行 `qmake`，然后编译项目。
+5. 插件输出会生成在该套件对应的构建输出目录中。
+
+## 使用命令行构建
+
+### API 5 构建示例
+
+```bash
+cd API5
+qmake PixelScreenPlugin.pro
+make -j$(nproc)
+```
+
+### API 4 构建示例
+
+```bash
+cd API4
+qmake PixelScreenPlugin.pro
+make -j$(nproc)
+```
+
+### Windows (MSVC)
+
+```bat
+cd API5
+qmake PixelScreenPlugin.pro
+nmake
+```
+
+或者：
+
+```bat
+cd API4
+qmake PixelScreenPlugin.pro
+nmake
+```
+
+## 安装 / 使用插件
+
+编译完成后，将生成的插件库复制到你的 OpenRGB 插件目录中，或者使用 OpenRGB 中的插件管理器加载它。
+
+在 Linux 上，如果使用适当的 `PREFIX` 值并执行 `make install`，该项目会安装到标准的 OpenRGB 插件路径中：
+
+```bash
+make install PREFIX=/usr
+```
+
+在 Windows 上，通常需要将插件加载到生成的构建输出目录中，或者复制到已安装 OpenRGB 使用的插件目录。
+
+## 说明
+
+- 项目文件会在编译时自动生成版本信息和 API 版本等元数据。
+- 插件源码使用各自 API 目录中内置的 OpenRGB SDK（`OpenRGB/` 文件夹），因此应针对你想要运行的 OpenRGB 版本编译相应的 API 目录。
+- 如果你不确定应该使用哪个 API，较新的 OpenRGB 构建请优先选择 `API5`，较旧的 RC 版本则使用 `API4`。
