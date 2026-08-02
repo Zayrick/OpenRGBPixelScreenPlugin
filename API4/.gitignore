@@ -1,0 +1,15 @@
+*.pro.user*
+*.o
+ui_*
+moc_*
+qrc_*
+Makefile
+.qmake.stash
+.vscode
+_intermediate_*/
+debug/
+release/
+build/
+Ship/
+www/*
+OpenRGBMatrixTextPlugin.json

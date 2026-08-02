@@ -1,0 +1,9 @@
+﻿# Ignore build outputs for subprojects
+API4/debug/
+API4/release/
+API4/_intermediate_/
+API4/*.pro.user*
+API5/debug/
+API5/release/
+API5/_intermediate_/
+API5/*.pro.user*

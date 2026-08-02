@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/">
+        <file>resources/WLED_Text.json</file>
+        <file>resources/WLED_Text_ZH.json</file>
+        <file>images/OpenRGBPixelScreenPlugin.png</file>
+    </qresource>
+</RCC>

@@ -1,0 +1,6 @@
+[submodule "API4/OpenRGB"]
+	path = API4/OpenRGB
+	url = https://gitlab.com/CalcProgrammer1/OpenRGB
+[submodule "API5/OpenRGB"]
+	path = API5/OpenRGB
+	url = https://gitlab.com/CalcProgrammer1/OpenRGB
