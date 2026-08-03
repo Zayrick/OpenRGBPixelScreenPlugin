@@ -1,20 +1,9 @@
 name: Plugin Builds
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    tags:
-      - 'v*'
-  pull_request:
-    paths:
-      - 'API4/**'
-      - 'API5/**'
-      - '.github/workflows/plugin-builds.yml'
-  workflow_dispatch:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: write

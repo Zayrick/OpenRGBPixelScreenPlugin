@@ -14,6 +14,7 @@
 #include <QObject>
 #include <QWidget>
 #include <QTimer>
+#include <QMutex>
 #include <map>
 #include <vector>
 #include <string>
@@ -21,6 +22,7 @@
 #include "OpenRGBPluginInterface.h"
 #include "RGBControllerInterface.h"
 #include "LogManager.h"
+#include "HardwareSensorManager.h"
 
 // Font structure representing a character's LED matrix layout
 struct Glyph
@@ -44,11 +46,12 @@ struct MatrixZoneTarget
 struct DeviceMatrixSettings
 {
     bool enabled = false;
-    int display_mode = 1;       // 0: Time, 1: Custom Text, 2: Hardware Sensor, 3: Pixel Art
+    int display_mode = 1;       // 0: Time, 1: Custom Text, 3: Pixel Art, 4: Sensor Data
     std::string font_size = "Medium"; // "Small", "Medium", "Large", "Chinese"
     std::string custom_text = "OpenRGB";
     std::string time_format = "hh:mm tt";
-    std::string sensor_type = "CPU Temp"; // "CPU Temp", "CPU Load", "GPU Temp", "RAM Usage"
+    std::string sensor_format = "CPU: [CPU\\Load\\CPU Total]";
+    int sensor_update_interval = 1000; // ms: 250, 500, 1000, 2000
     std::string pixel_art_json = "[ [1, 0, 0, 1], [0, 1, 1, 0], [0, 1, 1, 0], [1, 0, 0, 1] ]"; // 2D Pixel Art Matrix JSON
     std::string scroll_direction = "Left"; // "Off", "Left", "Right", "Ping-Pong"
     int scroll_speed = 50;      // 1 to 100
@@ -59,6 +62,7 @@ struct DeviceMatrixSettings
     bool invert_color = false;
     int padding_x = 0;
     int padding_y = 0;
+    int text_align = 0; // 0: Start, 1: Center, 2: End
 
     // Runtime state
     float scroll_offset = 0.0f;
@@ -133,8 +137,12 @@ public:
     void                        UpdateControllers();
     static void                 OnControllerUpdate(void* callback_arg, unsigned int reason, void* controller_ptr);
 
+    HardwareSensorManager*      sensor_manager = nullptr;
+    QTimer*                     sensor_timer   = nullptr;
+
 private slots:
     void                        RenderFrame();
+    void                        OnSensorDataUpdated();
 
 public:
     /*-----------------------------------------------------*\
