@@ -82,7 +82,8 @@ jobs:
           $packageName = "${{ matrix.api }}-Windows-${{ matrix.arch }}"
           $packageDir = "dist/$packageName"
           New-Item -ItemType Directory -Force $packageDir | Out-Null
-          $dll = Get-ChildItem "${{ matrix.build-dir }}" -Recurse -File -Filter *.dll | Select-Object -First 1
+          $dll = Get-ChildItem "${{ matrix.build-dir }}" -Recurse -File -Filter PixelScreenPlugin.dll | Select-Object -First 1
+          if (-not $dll) { $dll = Get-ChildItem "${{ matrix.build-dir }}" -Recurse -File -Filter *PixelScreenPlugin*.dll | Select-Object -First 1 }
           if ($dll) { Copy-Item $dll.FullName $packageDir }
           $json = Get-ChildItem "${{ matrix.build-dir }}" -Recurse -File -Filter PixelScreenPlugin.json | Select-Object -First 1
           if ($json) { Copy-Item $json.FullName $packageDir }
@@ -204,7 +205,10 @@ jobs:
           package_name="${{ matrix.api }}-Linux-${{ matrix.arch-name }}"
           package_dir="dist/$package_name"
           mkdir -p "$package_dir"
-          plugin="$(find "${{ matrix.build-dir }}" -name "*.so" -type f -print -quit)"
+          plugin="$(find "${{ matrix.build-dir }}" -name "*PixelScreenPlugin*.so" -type f -print -quit)"
+          if [ -z "$plugin" ]; then
+            plugin="$(find "${{ matrix.build-dir }}" -name "*.so" -not -path "*/OpenRGB/*" -type f -print -quit)"
+          fi
           if [ -n "$plugin" ]; then cp "$plugin" "$package_dir/"; fi
           json="$(find "${{ matrix.build-dir }}" -name "PixelScreenPlugin.json" -type f -print -quit)"
           if [ -n "$json" ]; then cp "$json" "$package_dir/"; fi
