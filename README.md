@@ -35,6 +35,169 @@ Render custom scrolling text, clock, hardware sensors and pixel art on OpenRGB m
 
 You can get older releases [here](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases).
 
+# ⚙️ Settings
+## 🕔 Time / Clock formats
+The configuration accepts standard date/time format tokens like hh:mm:ss aa.
+
+<table>
+  <tr>
+    <td><b>Format</b></td>
+    <td><b>Description</b></td>
+    <td><b>Example</b></td>
+  </tr>
+  <tr>
+    <td>d</td>
+    <td>Date</td>
+    <td>1</td>
+  </tr>
+  <tr>
+    <td>dd</td>
+    <td>Date with leading zero</td>
+    <td>01</td>
+  </tr>
+  <tr>
+    <td>ddd</td>
+    <td>Short day name abbreviation (Sun to Sat)</td>
+    <td>01</td>
+  </tr>
+  <tr>
+    <td>dddd</td>
+    <td>Complete weekday name (Sunday to Saturday)</td>
+    <td>01</td>
+  </tr>
+  <tr>
+    <td>M</td>
+    <td>Month</td>
+    <td>3</td>
+  </tr>
+  <tr>
+    <td>MM</td>
+    <td>Month with leading zero</td>
+    <td>03</td>
+  </tr>
+  <tr>
+    <td>MMM</td>
+    <td>Short month name abbreviation (Jan to Dec)</td>
+    <td>03</td>
+  </tr>
+  <tr>
+    <td>MMMM</td>
+    <td>Full month name (January to December)</td>
+    <td>03</td>
+  </tr>
+  <tr>
+    <td>yy</td>
+    <td>2-digits year</td>
+    <td>24</td>
+  </tr>
+  <tr>
+    <td>yyyy</td>
+    <td>full year</td>
+    <td>2024</td>
+  </tr>
+  <tr>
+    <td>h</td>
+    <td>12-hour</td>
+    <td>8</td>
+  </tr>
+  <tr>
+    <td>hh</td>
+    <td>12-hour with leading zero</td>
+    <td>08</td>
+  </tr>
+  <tr>
+    <td>H</td>
+    <td>24-hour</td>
+    <td>20</td>
+  </tr>
+  <tr>
+    <td>HH</td>
+    <td>24-hour with leading zero</td>
+    <td>20</td>
+  </tr>
+  <tr>
+    <td>m</td>
+    <td>Minute</td>
+    <td>5</td>
+  </tr>
+  <tr>
+    <td>mm</td>
+    <td>Minute with leading zero</td>
+    <td>05</td>
+  </tr>
+  <tr>
+    <td>s</td>
+    <td>Second</td>
+    <td>3</td>
+  </tr>
+  <tr>
+    <td>ss</td>
+    <td>Second with leading zero</td>
+    <td>03</td>
+  </tr>
+  <tr>
+    <td>t or a</td>
+    <td>A/P</td>
+    <td>P</td>
+  </tr>
+  <tr>
+    <td>tt or aa</td>
+    <td>AM/PM</td>
+    <td>PM</td>
+  </tr>
+</table>
+
+## 🍄 Pixel Art
+Pixel Art is an Array of ones and zeroes in an Array, One represents light on and Zero represents light off. Each group of Ones and Zeroes is equals to each row on your Matrix.
+
+For example: Dino on my 16x16 Matrix
+```
+[
+[0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0], 
+[0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1], 
+[0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1], 
+[0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1], 
+[0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0], 
+[0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0], 
+[1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0], 
+[1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0], 
+[1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0], 
+[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0], 
+[0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0], 
+[0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0], 
+[0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0], 
+[0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0], 
+[0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0], 
+[0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+```
+
+Another example: On Air on my 32x8 Matrix
+```
+[
+[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+[0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0.5, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0.5, 0, 1, 1, 1, 1, 1, 1], 
+[1, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0, 1, 1, 0, 0, 0, 1, 0.5, 0, 1, 0.5, 0.5, 0.5, 0.5, 1, 0, 1, 0.5, 0, 1, 0.5, 0.5, 0.5, 0.5, 1], 
+[1, 0.5, 0, 0, 0, 0, 1, 0, 1, 0.5, 1, 0, 0, 1, 0.5, 0, 1, 0.5, 0, 0, 0, 1, 0, 1, 0.5, 0, 1, 0.5, 0, 0, 0, 1], 
+[1, 0.5, 0, 0, 0, 0, 1, 0, 1, 0.5, 0.5, 1, 0, 1, 0.5, 0, 1, 0.5, 0, 0, 0, 1, 0, 1, 0.5, 0, 1, 1, 1, 1, 1, 1], 
+[1, 0.5, 0, 0, 0, 0, 1, 0, 1, 0.5, 0, 0.5, 1, 1, 0.5, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0.5, 0, 1, 0.5, 0.5, 0.5, 1, 0], 
+[0, 1, 1, 1, 1, 1, 0, 0, 1, 0.5, 0, 0, 0.5, 1, 0.5, 0, 1, 0.5, 0, 0, 0, 1, 0, 1, 0.5, 0, 1, 0.5, 0, 0, 0, 1], 
+[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+```
+
+<img width="1437" height="904" alt="image" src="https://github.com/user-attachments/assets/a3984138-a460-42b2-88eb-52d8066fb057" />
+I made a simple html page to create pixel art: https://pixelart.nolliergb.com/
+
+### ⏲ Sensor Data
+### Requires [Libre Hardware Monitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) and with Remote Web Server running.
+
+Add your sensors from the Sensor list into Sensor Format, you can combine with normal text and Sensors for example:
+```
+CPU: [11th Gen Intel Core i5-11400\Load\CPU Total]  [11th Gen Intel Core i5-11400\Temperatures\Core Average]
+GPU: [NVIDIA GeForce GTX 1660 SUPER\Load\GPU Core]  [NVIDIA GeForce GTX 1660 SUPER\Temperatures\GPU Core]
+```
+
 # 🔨 Build yourself
 This repository contains two plugin variants, each built against a different OpenRGB plugin API:
 
