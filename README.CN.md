@@ -58,12 +58,12 @@
   <tr>
     <td>ddd</td>
     <td>星期缩写（Sun 到 Sat）</td>
-    <td>01</td>
+    <td>Tue</td>
   </tr>
   <tr>
     <td>dddd</td>
     <td>完整星期名称（Sunday 到 Saturday）</td>
-    <td>01</td>
+    <td>Tuesday</td>
   </tr>
   <tr>
     <td>M</td>
@@ -78,12 +78,12 @@
   <tr>
     <td>MMM</td>
     <td>月份缩写（Jan 到 Dec）</td>
-    <td>03</td>
+    <td>Mar</td>
   </tr>
   <tr>
     <td>MMMM</td>
     <td>完整月份名称（January 到 December）</td>
-    <td>03</td>
+    <td>March</td>
   </tr>
   <tr>
     <td>yy</td>

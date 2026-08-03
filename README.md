@@ -58,12 +58,12 @@ The configuration accepts standard date/time format tokens like hh:mm:ss aa.
   <tr>
     <td>ddd</td>
     <td>Short day name abbreviation (Sun to Sat)</td>
-    <td>01</td>
+    <td>Tue</td>
   </tr>
   <tr>
     <td>dddd</td>
     <td>Complete weekday name (Sunday to Saturday)</td>
-    <td>01</td>
+    <td>Tuesday</td>
   </tr>
   <tr>
     <td>M</td>
@@ -78,12 +78,12 @@ The configuration accepts standard date/time format tokens like hh:mm:ss aa.
   <tr>
     <td>MMM</td>
     <td>Short month name abbreviation (Jan to Dec)</td>
-    <td>03</td>
+    <td>Mar</td>
   </tr>
   <tr>
     <td>MMMM</td>
     <td>Full month name (January to December)</td>
-    <td>03</td>
+    <td>March</td>
   </tr>
   <tr>
     <td>yy</td>
