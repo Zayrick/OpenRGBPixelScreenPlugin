@@ -29,7 +29,7 @@ OpenRGBPluginInfo PixelScreenPlugin::GetPluginInfo()
     OpenRGBPluginInfo info;
 
     info.Name           = "Pixel Screen Plugin";
-    info.Description    = "Render custom scrolling text, clock, sensors, and pixel art on OpenRGB matrices";
+    info.Description    = "Render custom scrolling text, clock, and pixel art on OpenRGB matrices";
     info.Version        = VERSION_STRING;
     info.Commit         = GIT_COMMIT_ID;
     info.URL            = "https://gitlab.com/OpenRGBDevelopers/OpenRGBPixelScreenPlugin";
@@ -353,7 +353,6 @@ void PixelScreenPlugin::LoadSettings()
                     if (j.contains("font_size")) dev_s.font_size = j["font_size"];
                     if (j.contains("custom_text")) dev_s.custom_text = j["custom_text"];
                     if (j.contains("time_format")) dev_s.time_format = j["time_format"];
-                    if (j.contains("sensor_type")) dev_s.sensor_type = j["sensor_type"];
                     if (j.contains("pixel_art_json")) dev_s.pixel_art_json = j["pixel_art_json"];
                     if (j.contains("scroll_direction")) dev_s.scroll_direction = j["scroll_direction"];
                     if (j.contains("scroll_speed")) dev_s.scroll_speed = j["scroll_speed"];
@@ -364,6 +363,7 @@ void PixelScreenPlugin::LoadSettings()
                     if (j.contains("invert_color")) dev_s.invert_color = j["invert_color"];
                     if (j.contains("padding_x")) dev_s.padding_x = j["padding_x"];
                     if (j.contains("padding_y")) dev_s.padding_y = j["padding_y"];
+                    if (j.contains("text_align")) dev_s.text_align = j["text_align"];
 
                     settings.device_settings[dev_name] = dev_s;
                 }
@@ -399,7 +399,6 @@ void PixelScreenPlugin::SaveSettings()
             j["font_size"] = dev_s.font_size;
             j["custom_text"] = dev_s.custom_text;
             j["time_format"] = dev_s.time_format;
-            j["sensor_type"] = dev_s.sensor_type;
             j["pixel_art_json"] = dev_s.pixel_art_json;
             j["scroll_direction"] = dev_s.scroll_direction;
             j["scroll_speed"] = dev_s.scroll_speed;
@@ -410,6 +409,7 @@ void PixelScreenPlugin::SaveSettings()
             j["invert_color"] = dev_s.invert_color;
             j["padding_x"] = dev_s.padding_x;
             j["padding_y"] = dev_s.padding_y;
+            j["text_align"] = dev_s.text_align;
 
             devices_json[pair.first] = j;
         }
@@ -547,8 +547,43 @@ int PixelScreenPlugin::GetSpacing(const std::string& ch, const std::string& font
     return 6;
 }
 
-Glyph PixelScreenPlugin::GetGlyph(const std::string& ch, const std::string& font_size, bool time)
+Glyph PixelScreenPlugin::GetGlyph(const std::string& ch, const std::string& font_size, bool /*time*/)
 {
+    char c = ch.empty() ? ' ' : ch[0];
+
+    auto search_maps = [&](const std::map<char, Glyph>& primary, const std::map<char, Glyph>& secondary) -> Glyph
+    {
+        auto it = primary.find(c);
+        if (it != primary.end()) return it->second;
+        it = secondary.find(c);
+        if (it != secondary.end()) return it->second;
+
+        // Try uppercase
+        if (c >= 'a' && c <= 'z')
+        {
+            char upper_c = c - 32;
+            it = primary.find(upper_c);
+            if (it != primary.end()) return it->second;
+            it = secondary.find(upper_c);
+            if (it != secondary.end()) return it->second;
+        }
+        // Try lowercase
+        else if (c >= 'A' && c <= 'Z')
+        {
+            char lower_c = c + 32;
+            it = primary.find(lower_c);
+            if (it != primary.end()) return it->second;
+            it = secondary.find(lower_c);
+            if (it != secondary.end()) return it->second;
+        }
+
+        Glyph blank;
+        blank.width = 4;
+        blank.height = 8;
+        blank.grid.assign(8, std::vector<unsigned char>(4, 0));
+        return blank;
+    };
+
     if (font_size == "Chinese")
     {
         if (ch.length() > 1)
@@ -556,70 +591,20 @@ Glyph PixelScreenPlugin::GetGlyph(const std::string& ch, const std::string& font
             auto it = zh_font.find(ch);
             if (it != zh_font.end()) return it->second;
         }
-        else
-        {
-            char c = ch[0];
-            if (time)
-            {
-                auto it = large_digits.find(c);
-                if (it != large_digits.end()) return it->second;
-            }
-            else
-            {
-                auto it = large_letters.find(c);
-                if (it != large_letters.end()) return it->second;
-            }
-        }
-    }
-    else if (font_size == "Medium")
-    {
-        char c = ch.empty() ? ' ' : ch[0];
-        if (time)
-        {
-            auto it = digits.find(c);
-            if (it != digits.end()) return it->second;
-        }
-        else
-        {
-            auto it = letters.find(c);
-            if (it != letters.end()) return it->second;
-        }
+        return search_maps(large_letters, large_digits);
     }
     else if (font_size == "Large")
     {
-        char c = ch.empty() ? ' ' : ch[0];
-        if (time)
-        {
-            auto it = large_digits.find(c);
-            if (it != large_digits.end()) return it->second;
-        }
-        else
-        {
-            auto it = large_letters.find(c);
-            if (it != large_letters.end()) return it->second;
-        }
+        return search_maps(large_letters, large_digits);
     }
-    else // Small
+    else if (font_size == "Small")
     {
-        char c = ch.empty() ? ' ' : ch[0];
-        if (time)
-        {
-            auto it = small_digits.find(c);
-            if (it != small_digits.end()) return it->second;
-        }
-        else
-        {
-            auto it = small_letters.find(c);
-            if (it != small_letters.end()) return it->second;
-        }
+        return search_maps(small_letters, small_digits);
     }
-    
-    // Blank fallback
-    Glyph blank;
-    blank.width = 4;
-    blank.height = 8;
-    blank.grid.assign(8, std::vector<unsigned char>(4, 0));
-    return blank;
+    else // Medium
+    {
+        return search_maps(letters, digits);
+    }
 }
 
 std::string PixelScreenPlugin::FormatDateTime(const std::string& format)
@@ -627,19 +612,57 @@ std::string PixelScreenPlugin::FormatDateTime(const std::string& format)
     QDateTime now = QDateTime::currentDateTime();
     QString qformat = QString::fromStdString(format);
     
-    bool has_tt = qformat.contains("tt");
-    if (has_tt)
+    if (qformat.contains("tt"))
     {
         qformat.replace("tt", "ap");
     }
-    bool has_t = qformat.contains("t") && !has_tt;
-    if (has_t)
+    else if (qformat.contains("t"))
     {
         qformat.replace("t", "a");
     }
+
+    if (qformat.contains("aa"))
+    {
+        qformat.replace("aa", "ap");
+    }
+    else if (qformat.contains("AA"))
+    {
+        qformat.replace("AA", "AP");
+    }
     
     QString result = now.toString(qformat);
-    return result.toLower().toStdString();
+    std::string str = result.toLower().toStdString();
+
+    // Capitalize the first letter of each word
+    bool cap_next = true;
+    for (char& c : str)
+    {
+        if (std::isalpha((unsigned char)c))
+        {
+            if (cap_next) c = std::toupper((unsigned char)c);
+            cap_next = false;
+        }
+        else
+        {
+            cap_next = true;
+        }
+    }
+
+    // Convert "Am" -> "AM" and "Pm" -> "PM" when they stand as AM/PM meridian indicators
+    for (size_t i = 0; i < str.size(); i++)
+    {
+        if ((str[i] == 'A' || str[i] == 'P') && i + 1 < str.size() && str[i + 1] == 'm')
+        {
+            bool prev_alpha = (i > 0 && std::isalpha((unsigned char)str[i - 1]));
+            bool next_alpha = (i + 2 < str.size() && std::isalpha((unsigned char)str[i + 2]));
+            if (!prev_alpha && !next_alpha)
+            {
+                str[i + 1] = 'M';
+            }
+        }
+    }
+
+    return str;
 }
 
 void PixelScreenPlugin::RenderFrame()
@@ -682,43 +705,24 @@ void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, 
     struct RenderedGlyph {
         Glyph glyph;
         int offset_x;
+        int offset_y;    // line row offset in pixels
+        bool blink_off;  // true = glyph occupies space but renders no pixels
     };
 
     std::string text = "";
     bool is_time_mode = (dev_s.display_mode == 0);
+    bool colon_blink_off = false;
     if (is_time_mode)
     {
         text = FormatDateTime(dev_s.time_format);
         QTime now = QTime::currentTime();
-        if (now.second() % 2 != 0)
-        {
-            size_t pos = 0;
-            while ((pos = text.find(':', pos)) != std::string::npos)
-            {
-                text[pos] = ';';
-                pos++;
-            }
-        }
+        colon_blink_off = (now.second() % 2 != 0);
     }
     else if (dev_s.display_mode == 1)
     {
         text = dev_s.custom_text;
     }
-    else if (dev_s.display_mode == 2)
-    {
-        // Hardware Sensor Mode
-        if (dev_s.sensor_type == "CPU Temp")
-            text = "48C";
-        else if (dev_s.sensor_type == "CPU Load")
-            text = "35%";
-        else if (dev_s.sensor_type == "GPU Temp")
-            text = "52C";
-        else if (dev_s.sensor_type == "RAM Usage")
-            text = "42%";
-        else
-            text = "48C";
-    }
-    else if (dev_s.display_mode == 3)
+    else if (dev_s.display_mode == 2 || dev_s.display_mode == 3)
     {
         // Parse 2D Pixel Art Matrix JSON array (e.g. [[1,0,0,1], [0,1,1,0], ...])
         try
@@ -801,8 +805,16 @@ void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, 
                             unsigned int led_idx = map[y * matrix_w + x];
                             if (led_idx == 0xFFFFFFFF) continue;
                             
-                            int src_x = (int)std::floor((float)x - dev_s.scroll_offset) % buffer_width;
-                            if (src_x < 0) src_x += buffer_width;
+                            int src_x;
+                            if (dev_s.scroll_direction == "Off")
+                            {
+                                src_x = (int)x;
+                            }
+                            else
+                            {
+                                src_x = (int)std::floor((float)x - dev_s.scroll_offset) % buffer_width;
+                                if (src_x < 0) src_x += buffer_width;
+                            }
                             
                             int src_y = (int)y - dev_s.padding_y;
                             src_x = src_x - dev_s.padding_x;
@@ -853,21 +865,75 @@ void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, 
         }
     }
     
-    std::vector<std::string> chars = SplitUTF8(text);
-    
-    int total_width = 0;
-    std::vector<RenderedGlyph> rendered_glyphs;
-    
-    for (const auto& ch : chars)
+    // Split text into lines on \n
+    std::vector<std::string> lines;
     {
-        Glyph g = GetGlyph(ch, dev_s.font_size, is_time_mode);
-        int spacing = GetSpacing(ch, dev_s.font_size, is_time_mode);
-        
-        rendered_glyphs.push_back({g, total_width});
-        total_width += spacing;
+        std::string remaining = text;
+        size_t pos;
+        while ((pos = remaining.find('\n')) != std::string::npos)
+        {
+            lines.push_back(remaining.substr(0, pos));
+            remaining = remaining.substr(pos + 1);
+        }
+        lines.push_back(remaining);
     }
-    
+
+    // Determine glyph height for line spacing (use first glyph of first line)
+    int glyph_h = 8; // default
+    {
+        for (const auto& line : lines)
+        {
+            std::vector<std::string> first_chars = SplitUTF8(line);
+            if (!first_chars.empty())
+            {
+                Glyph sample = GetGlyph(first_chars[0], dev_s.font_size, is_time_mode);
+                if (sample.height > 0) { glyph_h = (int)sample.height; break; }
+            }
+        }
+    }
+    int line_spacing = glyph_h + 1; // 1px gap between lines
+
+    // Pass 1: compute width of each line
+    std::vector<int> line_widths;
+    for (const auto& line : lines)
+    {
+        std::vector<std::string> chars = SplitUTF8(line);
+        int w = 0;
+        for (const auto& ch : chars)
+            w += GetSpacing(ch, dev_s.font_size, is_time_mode);
+        line_widths.push_back(w);
+    }
+
+    int total_width = 0;
+    for (int w : line_widths)
+        if (w > total_width) total_width = w;
     if (total_width <= 0) total_width = 1;
+
+    // Pass 2: build rendered glyphs with per-line alignment offset baked into offset_x
+    std::vector<RenderedGlyph> rendered_glyphs;
+    for (int line_idx = 0; line_idx < (int)lines.size(); line_idx++)
+    {
+        std::vector<std::string> chars = SplitUTF8(lines[line_idx]);
+        int line_w = line_widths[line_idx];
+        int line_y = line_idx * line_spacing;
+
+        // Per-line alignment offset (shifts shorter lines relative to widest)
+        int line_align = 0;
+        if (dev_s.text_align == 1) // Center: shift shorter lines right
+            line_align = (total_width - line_w) / 2;
+        else if (dev_s.text_align == 2) // End: right-align each line
+            line_align = total_width - line_w;
+
+        int line_x = 0;
+        for (const auto& ch : chars)
+        {
+            Glyph g = GetGlyph(ch, dev_s.font_size, is_time_mode);
+            int spacing = GetSpacing(ch, dev_s.font_size, is_time_mode);
+            bool blink_off = colon_blink_off && (ch == ":");
+            rendered_glyphs.push_back({g, line_x + line_align, line_y, blink_off});
+            line_x += spacing;
+        }
+    }
 
     const unsigned int* map = target.controller->GetZoneMatrixMapData(target.zone_idx);
     unsigned int matrix_w = target.controller->GetZoneMatrixMapWidth(target.zone_idx);
@@ -903,11 +969,19 @@ void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, 
         if (dev_s.scroll_offset <= -buffer_width) dev_s.scroll_offset += buffer_width;
         if (dev_s.scroll_offset >= buffer_width) dev_s.scroll_offset -= buffer_width;
     }
-    else
+    int screen_align = 0;
+    if (dev_s.scroll_direction == "Off")
     {
-        dev_s.scroll_offset = 0.0f;
+        if (dev_s.text_align == 1)      // Center
+        {
+            screen_align = ((int)matrix_w - total_width) / 2;
+        }
+        else if (dev_s.text_align == 2) // End
+        {
+            screen_align = (int)matrix_w - total_width;
+        }
     }
-    
+
     RGBColor text_color = ToRGBColor(dev_s.text_r, dev_s.text_g, dev_s.text_b);
     
     for (unsigned int y = 0; y < matrix_h; y++)
@@ -917,29 +991,36 @@ void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, 
             unsigned int led_idx = map[y * matrix_w + x];
             if (led_idx == 0xFFFFFFFF) continue;
             
-            int src_x = (int)std::floor((float)x - dev_s.scroll_offset) % buffer_width;
-            if (src_x < 0) src_x += buffer_width;
+            int src_x;
+            if (dev_s.scroll_direction == "Off")
+            {
+                src_x = (int)x - screen_align;
+            }
+            else
+            {
+                src_x = (int)std::floor((float)x - dev_s.scroll_offset) % buffer_width;
+                if (src_x < 0) src_x += buffer_width;
+            }
             
             int src_y = (int)y - dev_s.padding_y;
             src_x = src_x - dev_s.padding_x;
             
             bool pixel_on = false;
             
-            if (src_x >= 0 && src_x < total_width)
+            for (const auto& rg : rendered_glyphs)
             {
-                for (const auto& rg : rendered_glyphs)
+                if (rg.blink_off) continue;
+                int local_x = src_x - rg.offset_x;
+                if (local_x >= 0 && local_x < (int)rg.glyph.width)
                 {
-                    int local_x = src_x - rg.offset_x;
-                    if (local_x >= 0 && local_x < (int)rg.glyph.width)
+                    int local_y = src_y - rg.offset_y;
+                    if (local_y >= 0 && local_y < (int)rg.glyph.height)
                     {
-                        if (src_y >= 0 && src_y < (int)rg.glyph.height)
+                        if (rg.glyph.grid[local_y][local_x] > 0)
                         {
-                            if (rg.glyph.grid[src_y][local_x] > 0)
-                            {
-                                pixel_on = true;
-                            }
+                            pixel_on = true;
+                            break;
                         }
-                        break;
                     }
                 }
             }

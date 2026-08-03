@@ -27,7 +27,6 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     displayModeCombo = new QComboBox(settingsGroupBox);
     displayModeCombo->addItem("Time / Clock");
     displayModeCombo->addItem("Custom Text");
-    displayModeCombo->addItem("Hardware Sensor");
     displayModeCombo->addItem("Pixel Art");
     formLayout->addRow("Display Mode:", displayModeCombo);
 
@@ -39,23 +38,34 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     fontSizeCombo->addItem("Chinese");
     formLayout->addRow("Font Size:", fontSizeCombo);
 
-    // 3. Custom Text
-    customTextEdit = new QLineEdit("OpenRGB", settingsGroupBox);
+    // 3. Custom Text (Multi-line QTextEdit)
+    customTextEdit = new QTextEdit(settingsGroupBox);
+    customTextEdit->setAcceptRichText(false);
+    customTextEdit->setPlainText("OpenRGB");
+    customTextEdit->setMaximumHeight(65);
     formLayout->addRow("Custom Text:", customTextEdit);
 
-    // 4. Time Format
-    timeFormatEdit = new QLineEdit("hh:mm tt", settingsGroupBox);
+    // 4. Time Format (Multi-line QTextEdit)
+    timeFormatEdit = new QTextEdit(settingsGroupBox);
+    timeFormatEdit->setAcceptRichText(false);
+    timeFormatEdit->setPlainText("hh:mm tt");
+    timeFormatEdit->setMaximumHeight(65);
     formLayout->addRow("Time Format:", timeFormatEdit);
 
-    // 4b. Hardware Sensor Choice
-    sensorCombo = new QComboBox(settingsGroupBox);
-    sensorCombo->addItem("CPU Temp");
-    sensorCombo->addItem("CPU Load");
-    sensorCombo->addItem("GPU Temp");
-    sensorCombo->addItem("RAM Usage");
-    formLayout->addRow("Hardware Sensor:", sensorCombo);
+    // Text Alignment Radio Buttons ("Start", "Center", "End")
+    alignStartRadio = new QRadioButton("Start", settingsGroupBox);
+    alignCenterRadio = new QRadioButton("Center", settingsGroupBox);
+    alignEndRadio = new QRadioButton("End", settingsGroupBox);
+    alignStartRadio->setChecked(true);
 
-    // 4c. Pixel Art 2D Matrix Data (Textarea)
+    QHBoxLayout *alignLayout = new QHBoxLayout();
+    alignLayout->addWidget(alignStartRadio);
+    alignLayout->addWidget(alignCenterRadio);
+    alignLayout->addWidget(alignEndRadio);
+    alignLayout->addStretch(1);
+    formLayout->addRow("Text Alignment:", alignLayout);
+
+    // Pixel Art 2D Matrix Data (Textarea)
     pixelArtEdit = new QTextEdit(settingsGroupBox);
     pixelArtEdit->setPlainText("[ [1, 0, 0, 1], [0, 1, 1, 0], [0, 1, 1, 0], [1, 0, 0, 1] ]");
     pixelArtEdit->setMaximumHeight(90);
@@ -93,23 +103,25 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     QHBoxLayout *fpsLayout = new QHBoxLayout();
     fpsLayout->addWidget(fpsSlider);
     fpsLayout->addWidget(fpsValueLabel);
-    formLayout->addRow("FPS:", fpsLayout);
+    formLayout->addRow("Frame Rate (FPS):", fpsLayout);
 
-    // 9. Invert Color
-    invertColorCheck = new QCheckBox("Swap background && text color", settingsGroupBox);
-    formLayout->addRow("Invert Color:", invertColorCheck);
+    // 9. Invert Color Checkbox
+    invertColorCheck = new QCheckBox("Invert Background / Text Colors", settingsGroupBox);
+    formLayout->addRow("Color FX:", invertColorCheck);
 
-    // 10. Padding X
+    // 10. Padding Offsets
     paddingXSpin = new QSpinBox(settingsGroupBox);
     paddingXSpin->setRange(-100, 100);
-    paddingXSpin->setValue(0);
-    formLayout->addRow("Padding X:", paddingXSpin);
-
-    // 11. Padding Y
     paddingYSpin = new QSpinBox(settingsGroupBox);
     paddingYSpin->setRange(-100, 100);
-    paddingYSpin->setValue(0);
-    formLayout->addRow("Padding Y:", paddingYSpin);
+
+    QHBoxLayout *padLayout = new QHBoxLayout();
+    padLayout->addWidget(new QLabel("X:"));
+    padLayout->addWidget(paddingXSpin);
+    padLayout->addWidget(new QLabel("Y:"));
+    padLayout->addWidget(paddingYSpin);
+    padLayout->addStretch(1);
+    formLayout->addRow("Position Padding:", padLayout);
 
     mainLayout->addWidget(settingsGroupBox);
     mainLayout->addStretch(1);
@@ -118,9 +130,11 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     connect(enabledCheck, &QCheckBox::stateChanged, this, &DeviceSettingsPage::on_enabledCheck_stateChanged);
     connect(displayModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &DeviceSettingsPage::on_displayModeCombo_currentIndexChanged);
     connect(fontSizeCombo, &QComboBox::currentTextChanged, this, &DeviceSettingsPage::on_fontSizeCombo_currentTextChanged);
-    connect(customTextEdit, &QLineEdit::textChanged, this, &DeviceSettingsPage::on_customTextEdit_textChanged);
-    connect(timeFormatEdit, &QLineEdit::textChanged, this, &DeviceSettingsPage::on_timeFormatEdit_textChanged);
-    connect(sensorCombo, &QComboBox::currentTextChanged, this, &DeviceSettingsPage::on_sensorCombo_currentTextChanged);
+    connect(customTextEdit, &QTextEdit::textChanged, this, &DeviceSettingsPage::on_customTextEdit_textChanged);
+    connect(timeFormatEdit, &QTextEdit::textChanged, this, &DeviceSettingsPage::on_timeFormatEdit_textChanged);
+    connect(alignStartRadio, &QRadioButton::toggled, this, &DeviceSettingsPage::on_alignRadio_toggled);
+    connect(alignCenterRadio, &QRadioButton::toggled, this, &DeviceSettingsPage::on_alignRadio_toggled);
+    connect(alignEndRadio, &QRadioButton::toggled, this, &DeviceSettingsPage::on_alignRadio_toggled);
     connect(pixelArtEdit, &QTextEdit::textChanged, this, &DeviceSettingsPage::on_pixelArtEdit_textChanged);
     connect(scrollDirCombo, &QComboBox::currentTextChanged, this, &DeviceSettingsPage::on_scrollDirCombo_currentTextChanged);
     connect(scrollSpeedSlider, &QSlider::valueChanged, this, &DeviceSettingsPage::on_scrollSpeedSlider_valueChanged);
@@ -141,18 +155,23 @@ void DeviceSettingsPage::LoadSettingsToPage()
 
     enabledCheck->setChecked(dev_s.enabled);
 
-    displayModeCombo->setCurrentIndex(dev_s.display_mode);
-    fontSizeCombo->setEnabled(dev_s.display_mode != 3);
-    timeFormatEdit->setEnabled(dev_s.display_mode == 0);
-    customTextEdit->setEnabled(dev_s.display_mode == 1);
-    sensorCombo->setEnabled(dev_s.display_mode == 2);
-    pixelArtEdit->setEnabled(dev_s.display_mode == 3);
+    int mode_idx = dev_s.display_mode;
+    if (mode_idx > 1) mode_idx = (mode_idx == 3) ? 2 : 1;
+    displayModeCombo->setCurrentIndex(mode_idx);
+
+    fontSizeCombo->setEnabled(mode_idx != 2);
+    timeFormatEdit->setEnabled(mode_idx == 0);
+    customTextEdit->setEnabled(mode_idx == 1);
+    pixelArtEdit->setEnabled(mode_idx == 2);
 
     fontSizeCombo->setCurrentText(QString::fromStdString(dev_s.font_size));
-    customTextEdit->setText(QString::fromStdString(dev_s.custom_text));
-    timeFormatEdit->setText(QString::fromStdString(dev_s.time_format));
-    sensorCombo->setCurrentText(QString::fromStdString(dev_s.sensor_type));
+    customTextEdit->setPlainText(QString::fromStdString(dev_s.custom_text));
+    timeFormatEdit->setPlainText(QString::fromStdString(dev_s.time_format));
     pixelArtEdit->setPlainText(QString::fromStdString(dev_s.pixel_art_json));
+
+    if (dev_s.text_align == 0) alignStartRadio->setChecked(true);
+    else if (dev_s.text_align == 1) alignCenterRadio->setChecked(true);
+    else if (dev_s.text_align == 2) alignEndRadio->setChecked(true);
 
     scrollDirCombo->setCurrentText(QString::fromStdString(dev_s.scroll_direction));
     scrollSpeedSlider->setValue(dev_s.scroll_speed);
@@ -190,12 +209,11 @@ void DeviceSettingsPage::on_displayModeCombo_currentIndexChanged(int index)
 {
     if (loading_ui) return;
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.display_mode = index;
-    fontSizeCombo->setEnabled(index != 3);
+    dev_s.display_mode = (index == 2) ? 3 : index;
+    fontSizeCombo->setEnabled(index != 2);
     timeFormatEdit->setEnabled(index == 0);
     customTextEdit->setEnabled(index == 1);
-    sensorCombo->setEnabled(index == 2);
-    pixelArtEdit->setEnabled(index == 3);
+    pixelArtEdit->setEnabled(index == 2);
     plugin->SaveSettings();
 }
 
@@ -207,27 +225,29 @@ void DeviceSettingsPage::on_fontSizeCombo_currentTextChanged(const QString &text
     plugin->SaveSettings();
 }
 
-void DeviceSettingsPage::on_customTextEdit_textChanged(const QString &text)
+void DeviceSettingsPage::on_customTextEdit_textChanged()
 {
     if (loading_ui) return;
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.custom_text = text.toStdString();
+    dev_s.custom_text = customTextEdit->toPlainText().toStdString();
     plugin->SaveSettings();
 }
 
-void DeviceSettingsPage::on_timeFormatEdit_textChanged(const QString &text)
+void DeviceSettingsPage::on_timeFormatEdit_textChanged()
 {
     if (loading_ui) return;
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.time_format = text.toStdString();
+    dev_s.time_format = timeFormatEdit->toPlainText().toStdString();
     plugin->SaveSettings();
 }
 
-void DeviceSettingsPage::on_sensorCombo_currentTextChanged(const QString &text)
+void DeviceSettingsPage::on_alignRadio_toggled()
 {
     if (loading_ui) return;
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.sensor_type = text.toStdString();
+    if (alignStartRadio->isChecked()) dev_s.text_align = 0;
+    else if (alignCenterRadio->isChecked()) dev_s.text_align = 1;
+    else if (alignEndRadio->isChecked()) dev_s.text_align = 2;
     plugin->SaveSettings();
 }
 
@@ -249,23 +269,23 @@ void DeviceSettingsPage::on_scrollDirCombo_currentTextChanged(const QString &tex
 
 void DeviceSettingsPage::on_scrollSpeedSlider_valueChanged(int value)
 {
-    scrollSpeedValueLabel->setText(QString::number(value));
     if (loading_ui) return;
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.scroll_speed = value;
+    scrollSpeedValueLabel->setText(QString::number(value));
     plugin->SaveSettings();
 }
 
 void DeviceSettingsPage::on_textColorButton_clicked()
 {
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    QColor current = QColor(dev_s.text_r, dev_s.text_g, dev_s.text_b);
-    QColor color = QColorDialog::getColor(current, this, "Select Text Color");
-    if (color.isValid())
+    QColor current(dev_s.text_r, dev_s.text_g, dev_s.text_b);
+    QColor selected = QColorDialog::getColor(current, this, "Select Text Color");
+    if (selected.isValid())
     {
-        dev_s.text_r = color.red();
-        dev_s.text_g = color.green();
-        dev_s.text_b = color.blue();
+        dev_s.text_r = selected.red();
+        dev_s.text_g = selected.green();
+        dev_s.text_b = selected.blue();
         UpdateColorButton(textColorButton, dev_s.text_r, dev_s.text_g, dev_s.text_b);
         plugin->SaveSettings();
     }
@@ -273,10 +293,10 @@ void DeviceSettingsPage::on_textColorButton_clicked()
 
 void DeviceSettingsPage::on_fpsSlider_valueChanged(int value)
 {
-    fpsValueLabel->setText(QString::number(value));
     if (loading_ui) return;
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.fps = value;
+    fpsValueLabel->setText(QString::number(value));
     plugin->SaveSettings();
 }
 

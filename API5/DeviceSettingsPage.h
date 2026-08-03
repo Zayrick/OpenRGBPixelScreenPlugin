@@ -23,6 +23,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
+#include <QRadioButton>
 #include "PixelScreenPlugin.h"
 
 class DeviceSettingsPage : public QWidget
@@ -39,9 +40,9 @@ private slots:
     void on_enabledCheck_stateChanged(int state);
     void on_displayModeCombo_currentIndexChanged(int index);
     void on_fontSizeCombo_currentTextChanged(const QString &text);
-    void on_customTextEdit_textChanged(const QString &text);
-    void on_timeFormatEdit_textChanged(const QString &text);
-    void on_sensorCombo_currentTextChanged(const QString &text);
+    void on_customTextEdit_textChanged();
+    void on_timeFormatEdit_textChanged();
+    void on_alignRadio_toggled();
     void on_pixelArtEdit_textChanged();
     void on_scrollDirCombo_currentTextChanged(const QString &text);
     void on_scrollSpeedSlider_valueChanged(int value);
@@ -59,9 +60,11 @@ private:
     QCheckBox   *enabledCheck;
     QComboBox   *displayModeCombo;
     QComboBox   *fontSizeCombo;
-    QLineEdit   *customTextEdit;
-    QLineEdit   *timeFormatEdit;
-    QComboBox   *sensorCombo;
+    QTextEdit   *customTextEdit;
+    QTextEdit   *timeFormatEdit;
+    QRadioButton *alignStartRadio;
+    QRadioButton *alignCenterRadio;
+    QRadioButton *alignEndRadio;
     QTextEdit   *pixelArtEdit;
     QComboBox   *scrollDirCombo;
     QSlider     *scrollSpeedSlider;

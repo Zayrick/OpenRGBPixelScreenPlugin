@@ -44,11 +44,10 @@ struct MatrixZoneTarget
 struct DeviceMatrixSettings
 {
     bool enabled = false;
-    int display_mode = 1;       // 0: Time, 1: Custom Text, 2: Hardware Sensor, 3: Pixel Art
+    int display_mode = 1;       // 0: Time, 1: Custom Text, 2: Pixel Art
     std::string font_size = "Medium"; // "Small", "Medium", "Large", "Chinese"
     std::string custom_text = "OpenRGB";
     std::string time_format = "hh:mm tt";
-    std::string sensor_type = "CPU Temp"; // "CPU Temp", "CPU Load", "GPU Temp", "RAM Usage"
     std::string pixel_art_json = "[ [1, 0, 0, 1], [0, 1, 1, 0], [0, 1, 1, 0], [1, 0, 0, 1] ]"; // 2D Pixel Art Matrix JSON
     std::string scroll_direction = "Left"; // "Off", "Left", "Right", "Ping-Pong"
     int scroll_speed = 50;      // 1 to 100
@@ -59,6 +58,7 @@ struct DeviceMatrixSettings
     bool invert_color = false;
     int padding_x = 0;
     int padding_y = 0;
+    int text_align = 0; // 0: Start, 1: Center, 2: End
 
     // Runtime state
     float scroll_offset = 0.0f;
