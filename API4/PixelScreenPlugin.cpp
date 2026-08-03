@@ -9,6 +9,7 @@
 | \*---------------------------------------------------------*/
 
 #include "PixelScreenPlugin.h"
+#include "HardwareSensorManager.h"
 #include "PixelScreenTab.h"
 #include <QFile>
 #include <QDateTime>
@@ -69,14 +70,25 @@ void PixelScreenPlugin::Load(ResourceManagerInterface* resource_manager_ptr)
     // Register device list callback
     api->RegisterDeviceListChangeCallback(OnDeviceListChanged, this);
 
-    // Create settings tab UI
+    // Initialize hardware sensor manager BEFORE creating UI so
+    // DeviceSettingsPage constructors can connect to its signals
+    sensor_manager = new HardwareSensorManager(this);
+    connect(sensor_manager, &HardwareSensorManager::sensorDataUpdated, this, &PixelScreenPlugin::OnSensorDataUpdated);
+    sensor_timer = new QTimer(this);
+    sensor_timer->setInterval(1000);
+    connect(sensor_timer, &QTimer::timeout, sensor_manager, &HardwareSensorManager::fetchSensors);
+    sensor_timer->start();
+
+    // Create settings tab UI (DeviceSettingsPage constructors will find sensor_manager ready)
     ui = new PixelScreenTab(this);
     ui->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     // Start rendering frame timer
     render_timer = new QTimer(this);
     connect(render_timer, &QTimer::timeout, this, &PixelScreenPlugin::RenderFrame);
-    render_timer->start(20); // 50 FPS timer tick tick
+    render_timer->start(20); // 50 FPS timer tick
+
+    sensor_manager->fetchSensors(); // initial fetch (after UI is ready to receive the signal)
 }
 
 QWidget* PixelScreenPlugin::GetWidget()
@@ -92,6 +104,9 @@ QMenu* PixelScreenPlugin::GetTrayMenu()
 void PixelScreenPlugin::Unload()
 {
     LOG_INFO("[PixelScreenPlugin] Unloading\n");
+
+    if (sensor_timer) { sensor_timer->stop(); sensor_timer->deleteLater(); sensor_timer = nullptr; }
+    if (sensor_manager) { sensor_manager->deleteLater(); sensor_manager = nullptr; }
 
     if (render_timer)
     {
@@ -351,6 +366,8 @@ void PixelScreenPlugin::LoadSettings()
                     if (j.contains("padding_x")) dev_s.padding_x = j["padding_x"];
                     if (j.contains("padding_y")) dev_s.padding_y = j["padding_y"];
                     if (j.contains("text_align")) dev_s.text_align = j["text_align"];
+                    if (j.contains("sensor_format")) dev_s.sensor_format = j["sensor_format"];
+                    if (j.contains("sensor_update_interval")) dev_s.sensor_update_interval = j["sensor_update_interval"];
 
                     settings.device_settings[dev_name] = dev_s;
                 }
@@ -397,6 +414,8 @@ void PixelScreenPlugin::SaveSettings()
             j["padding_x"] = dev_s.padding_x;
             j["padding_y"] = dev_s.padding_y;
             j["text_align"] = dev_s.text_align;
+            j["sensor_format"] = dev_s.sensor_format;
+            j["sensor_update_interval"] = dev_s.sensor_update_interval;
 
             devices_json[pair.first] = j;
         }
@@ -685,6 +704,12 @@ void PixelScreenPlugin::RenderFrame()
     in_callback = false;
 }
 
+void PixelScreenPlugin::OnSensorDataUpdated()
+{
+    // The sensor_manager caches values internally; nothing more needed here.
+    // The resolved text is computed per-frame in OverlayTextOnController.
+}
+
 void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, DeviceMatrixSettings& dev_s, bool transparent)
 {
     if (!target.controller) return;
@@ -708,6 +733,13 @@ void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, 
     else if (dev_s.display_mode == 1)
     {
         text = dev_s.custom_text;
+    }
+    else if (dev_s.display_mode == 4)
+    {
+        if (sensor_manager)
+            text = sensor_manager->resolveFormat(dev_s.sensor_format);
+        else
+            text = dev_s.sensor_format;
     }
     else if (dev_s.display_mode == 2 || dev_s.display_mode == 3)
     {

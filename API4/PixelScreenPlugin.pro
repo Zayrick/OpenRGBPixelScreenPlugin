@@ -88,6 +88,7 @@ HEADERS +=                                                                      
     PixelScreenPlugin.h                                                                         \
     PixelScreenTab.h                                                                            \
     DeviceSettingsPage.h                                                                        \
+    HardwareSensorManager.h                                                                     \
     HorizontalTabBar.h                                                                          \
     CustomTabWidget.h                                                                           \
 

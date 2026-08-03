@@ -28,6 +28,7 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     displayModeCombo->addItem("Time / Clock");
     displayModeCombo->addItem("Custom Text");
     displayModeCombo->addItem("Pixel Art");
+    displayModeCombo->addItem("Sensor Data");
     formLayout->addRow("Display Mode:", displayModeCombo);
 
     // 2. Font Size
@@ -52,11 +53,62 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     timeFormatEdit->setMaximumHeight(65);
     formLayout->addRow("Time Format:", timeFormatEdit);
 
-    // Text Alignment Radio Buttons ("Start", "Center", "End")
+    // 5. Sensor Format (textarea)
+    sensorFormatEdit = new QTextEdit(settingsGroupBox);
+    sensorFormatEdit->setAcceptRichText(false);
+    sensorFormatEdit->setPlaceholderText("e.g. CPU: [CPU\\Load\\CPU Total]  Temp: [CPU\\Temperatures\\Core Average]");
+    sensorFormatEdit->setMaximumHeight(65);
+    formLayout->addRow("Sensor Format:", sensorFormatEdit);
+
+    // 6. Sensor Picker Row
+    sensorComboBox = new QComboBox(settingsGroupBox);
+    sensorComboBox->setMinimumWidth(300);
+    sensorComboBox->addItem("(refresh to load sensors)");
+    sensorAddButton = new QPushButton("Add", settingsGroupBox);
+    sensorRefreshButton = new QPushButton("Refresh", settingsGroupBox);
+    sensorStatusLabel = new QLabel("", settingsGroupBox);
+    sensorStatusLabel->setStyleSheet("color: gray; font-style: italic;");
+
+    QHBoxLayout *sensorPickerLayout = new QHBoxLayout();
+    sensorPickerLayout->addWidget(sensorComboBox, 1);
+    sensorPickerLayout->addWidget(sensorAddButton);
+    sensorPickerLayout->addWidget(sensorRefreshButton);
+    formLayout->addRow("Sensor:", sensorPickerLayout);
+    formLayout->addRow("", sensorStatusLabel);
+
+    // 7. Sensor Update Interval Radio Buttons
+    sensorInterval250Radio  = new QRadioButton("250ms",  settingsGroupBox);
+    sensorInterval500Radio  = new QRadioButton("500ms",  settingsGroupBox);
+    sensorInterval1000Radio = new QRadioButton("1s",     settingsGroupBox);
+    sensorInterval2000Radio = new QRadioButton("2s",     settingsGroupBox);
+    sensorInterval1000Radio->setChecked(true);
+
+    // Explicit group prevents conflict with alignment radios
+    sensorIntervalGroup = new QButtonGroup(this);
+    sensorIntervalGroup->addButton(sensorInterval250Radio,  0);
+    sensorIntervalGroup->addButton(sensorInterval500Radio,  1);
+    sensorIntervalGroup->addButton(sensorInterval1000Radio, 2);
+    sensorIntervalGroup->addButton(sensorInterval2000Radio, 3);
+
+    QHBoxLayout *sensorIntervalLayout = new QHBoxLayout();
+    sensorIntervalLayout->addWidget(sensorInterval250Radio);
+    sensorIntervalLayout->addWidget(sensorInterval500Radio);
+    sensorIntervalLayout->addWidget(sensorInterval1000Radio);
+    sensorIntervalLayout->addWidget(sensorInterval2000Radio);
+    sensorIntervalLayout->addStretch(1);
+    formLayout->addRow("Update Interval:", sensorIntervalLayout);
+
+    // Text Alignment Radio Buttons
     alignStartRadio = new QRadioButton("Start", settingsGroupBox);
     alignCenterRadio = new QRadioButton("Center", settingsGroupBox);
     alignEndRadio = new QRadioButton("End", settingsGroupBox);
     alignStartRadio->setChecked(true);
+
+    // Explicit group prevents conflict with interval radios
+    alignGroup = new QButtonGroup(this);
+    alignGroup->addButton(alignStartRadio,  0);
+    alignGroup->addButton(alignCenterRadio, 1);
+    alignGroup->addButton(alignEndRadio,    2);
 
     QHBoxLayout *alignLayout = new QHBoxLayout();
     alignLayout->addWidget(alignStartRadio);
@@ -71,7 +123,7 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     pixelArtEdit->setMaximumHeight(90);
     formLayout->addRow("Pixel Art Matrix (JSON):", pixelArtEdit);
 
-    // 5. Scroll Direction
+    // Scroll Direction
     scrollDirCombo = new QComboBox(settingsGroupBox);
     scrollDirCombo->addItem("Off");
     scrollDirCombo->addItem("Left");
@@ -79,7 +131,7 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     scrollDirCombo->addItem("Ping-Pong");
     formLayout->addRow("Scroll Direction:", scrollDirCombo);
 
-    // 6. Scroll Speed Slider + Label
+    // Scroll Speed
     scrollSpeedSlider = new QSlider(Qt::Horizontal, settingsGroupBox);
     scrollSpeedSlider->setRange(1, 100);
     scrollSpeedSlider->setValue(50);
@@ -90,11 +142,11 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     speedLayout->addWidget(scrollSpeedValueLabel);
     formLayout->addRow("Scroll Speed:", speedLayout);
 
-    // 7. Text Color
+    // Text Color
     textColorButton = new QPushButton("Select Text Color", settingsGroupBox);
     formLayout->addRow("Text Color:", textColorButton);
 
-    // 8. FPS Slider + Label
+    // FPS
     fpsSlider = new QSlider(Qt::Horizontal, settingsGroupBox);
     fpsSlider->setRange(1, 60);
     fpsSlider->setValue(20);
@@ -105,11 +157,11 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     fpsLayout->addWidget(fpsValueLabel);
     formLayout->addRow("Frame Rate (FPS):", fpsLayout);
 
-    // 9. Invert Color Checkbox
+    // Invert Color
     invertColorCheck = new QCheckBox("Invert Background / Text Colors", settingsGroupBox);
     formLayout->addRow("Color FX:", invertColorCheck);
 
-    // 10. Padding Offsets
+    // Padding
     paddingXSpin = new QSpinBox(settingsGroupBox);
     paddingXSpin->setRange(-100, 100);
     paddingYSpin = new QSpinBox(settingsGroupBox);
@@ -132,6 +184,13 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     connect(fontSizeCombo, &QComboBox::currentTextChanged, this, &DeviceSettingsPage::on_fontSizeCombo_currentTextChanged);
     connect(customTextEdit, &QTextEdit::textChanged, this, &DeviceSettingsPage::on_customTextEdit_textChanged);
     connect(timeFormatEdit, &QTextEdit::textChanged, this, &DeviceSettingsPage::on_timeFormatEdit_textChanged);
+    connect(sensorFormatEdit, &QTextEdit::textChanged, this, &DeviceSettingsPage::on_sensorFormatEdit_textChanged);
+    connect(sensorRefreshButton, &QPushButton::clicked, this, &DeviceSettingsPage::on_sensorRefreshButton_clicked);
+    connect(sensorAddButton, &QPushButton::clicked, this, &DeviceSettingsPage::on_sensorAddButton_clicked);
+    connect(sensorInterval250Radio,  &QRadioButton::toggled, this, &DeviceSettingsPage::on_sensorIntervalRadio_toggled);
+    connect(sensorInterval500Radio,  &QRadioButton::toggled, this, &DeviceSettingsPage::on_sensorIntervalRadio_toggled);
+    connect(sensorInterval1000Radio, &QRadioButton::toggled, this, &DeviceSettingsPage::on_sensorIntervalRadio_toggled);
+    connect(sensorInterval2000Radio, &QRadioButton::toggled, this, &DeviceSettingsPage::on_sensorIntervalRadio_toggled);
     connect(alignStartRadio, &QRadioButton::toggled, this, &DeviceSettingsPage::on_alignRadio_toggled);
     connect(alignCenterRadio, &QRadioButton::toggled, this, &DeviceSettingsPage::on_alignRadio_toggled);
     connect(alignEndRadio, &QRadioButton::toggled, this, &DeviceSettingsPage::on_alignRadio_toggled);
@@ -144,6 +203,17 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     connect(paddingXSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, &DeviceSettingsPage::on_paddingXSpin_valueChanged);
     connect(paddingYSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, &DeviceSettingsPage::on_paddingYSpin_valueChanged);
 
+    // Connect to sensor manager signals
+    if (plugin->sensor_manager)
+    {
+        connect(plugin->sensor_manager, &HardwareSensorManager::sensorDataUpdated, this, &DeviceSettingsPage::on_sensorDataUpdated);
+        connect(plugin->sensor_manager, &HardwareSensorManager::sensorFetchError, this, [this](const QString& err){
+            manual_refresh_requested = false;
+            sensorStatusLabel->setText("Error: " + err);
+            sensorStatusLabel->setStyleSheet("color: red; font-style: italic;");
+        });
+    }
+
     LoadSettingsToPage();
 }
 
@@ -155,19 +225,33 @@ void DeviceSettingsPage::LoadSettingsToPage()
 
     enabledCheck->setChecked(dev_s.enabled);
 
+    // Map internal display_mode to combo index:
+    // 0->0(Time), 1->1(Custom), 2->2(PixelArt), 3->2(PixelArt alt), 4->3(Sensor)
     int mode_idx = dev_s.display_mode;
-    if (mode_idx > 1) mode_idx = (mode_idx == 3) ? 2 : 1;
+    if (mode_idx == 3) mode_idx = 2;
+    else if (mode_idx == 4) mode_idx = 3;
+    else if (mode_idx > 4) mode_idx = 1;
     displayModeCombo->setCurrentIndex(mode_idx);
 
-    fontSizeCombo->setEnabled(mode_idx != 2);
+    bool is_sensor = (mode_idx == 3);
+    bool is_art    = (mode_idx == 2);
+    fontSizeCombo->setEnabled(!is_art);
     timeFormatEdit->setEnabled(mode_idx == 0);
     customTextEdit->setEnabled(mode_idx == 1);
-    pixelArtEdit->setEnabled(mode_idx == 2);
+    pixelArtEdit->setEnabled(is_art);
+    UpdateSensorUI(is_sensor);
 
     fontSizeCombo->setCurrentText(QString::fromStdString(dev_s.font_size));
     customTextEdit->setPlainText(QString::fromStdString(dev_s.custom_text));
     timeFormatEdit->setPlainText(QString::fromStdString(dev_s.time_format));
+    sensorFormatEdit->setPlainText(QString::fromStdString(dev_s.sensor_format));
     pixelArtEdit->setPlainText(QString::fromStdString(dev_s.pixel_art_json));
+
+    // Sensor interval radios
+    if (dev_s.sensor_update_interval <= 250)       sensorInterval250Radio->setChecked(true);
+    else if (dev_s.sensor_update_interval <= 500)  sensorInterval500Radio->setChecked(true);
+    else if (dev_s.sensor_update_interval <= 1000) sensorInterval1000Radio->setChecked(true);
+    else                                           sensorInterval2000Radio->setChecked(true);
 
     if (dev_s.text_align == 0) alignStartRadio->setChecked(true);
     else if (dev_s.text_align == 1) alignCenterRadio->setChecked(true);
@@ -186,7 +270,22 @@ void DeviceSettingsPage::LoadSettingsToPage()
 
     UpdateColorButton(textColorButton, dev_s.text_r, dev_s.text_g, dev_s.text_b);
 
+    on_sensorDataUpdated();
+
     loading_ui = false;
+}
+
+void DeviceSettingsPage::UpdateSensorUI(bool sensor_mode)
+{
+    sensorFormatEdit->setEnabled(sensor_mode);
+    sensorComboBox->setEnabled(sensor_mode);
+    sensorAddButton->setEnabled(sensor_mode);
+    sensorRefreshButton->setEnabled(sensor_mode);
+    sensorStatusLabel->setEnabled(sensor_mode);
+    sensorInterval250Radio->setEnabled(sensor_mode);
+    sensorInterval500Radio->setEnabled(sensor_mode);
+    sensorInterval1000Radio->setEnabled(sensor_mode);
+    sensorInterval2000Radio->setEnabled(sensor_mode);
 }
 
 void DeviceSettingsPage::UpdateColorButton(QPushButton* button, unsigned char r, unsigned char g, unsigned char b)
@@ -209,11 +308,21 @@ void DeviceSettingsPage::on_displayModeCombo_currentIndexChanged(int index)
 {
     if (loading_ui) return;
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.display_mode = (index == 2) ? 3 : index;
-    fontSizeCombo->setEnabled(index != 2);
+
+    // Combo: 0=Time, 1=Custom, 2=PixelArt, 3=Sensor
+    // Internal: 0=Time, 1=Custom, 3=PixelArt, 4=Sensor
+    if (index == 2) dev_s.display_mode = 3;
+    else if (index == 3) dev_s.display_mode = 4;
+    else dev_s.display_mode = index;
+
+    bool is_sensor = (index == 3);
+    bool is_art    = (index == 2);
+    fontSizeCombo->setEnabled(!is_art);
     timeFormatEdit->setEnabled(index == 0);
     customTextEdit->setEnabled(index == 1);
-    pixelArtEdit->setEnabled(index == 2);
+    pixelArtEdit->setEnabled(is_art);
+    UpdateSensorUI(is_sensor);
+
     plugin->SaveSettings();
 }
 
@@ -239,6 +348,95 @@ void DeviceSettingsPage::on_timeFormatEdit_textChanged()
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.time_format = timeFormatEdit->toPlainText().toStdString();
     plugin->SaveSettings();
+}
+
+void DeviceSettingsPage::on_sensorFormatEdit_textChanged()
+{
+    if (loading_ui) return;
+    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
+    dev_s.sensor_format = sensorFormatEdit->toPlainText().toStdString();
+    plugin->SaveSettings();
+}
+
+void DeviceSettingsPage::on_sensorIntervalRadio_toggled()
+{
+    if (loading_ui) return;
+    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
+    if (sensorInterval250Radio->isChecked())       dev_s.sensor_update_interval = 250;
+    else if (sensorInterval500Radio->isChecked())  dev_s.sensor_update_interval = 500;
+    else if (sensorInterval1000Radio->isChecked()) dev_s.sensor_update_interval = 1000;
+    else                                           dev_s.sensor_update_interval = 2000;
+    // Restart the sensor timer
+    if (plugin->sensor_timer)
+    {
+        plugin->sensor_timer->setInterval(dev_s.sensor_update_interval);
+    }
+    plugin->SaveSettings();
+}
+
+void DeviceSettingsPage::on_sensorRefreshButton_clicked()
+{
+    manual_refresh_requested = true;
+    sensorStatusLabel->setText("Refreshing...");
+    sensorStatusLabel->setStyleSheet("color: gray; font-style: italic;");
+    if (plugin->sensor_manager)
+        plugin->sensor_manager->fetchSensors();
+}
+
+void DeviceSettingsPage::on_sensorAddButton_clicked()
+{
+    int idx = sensorComboBox->currentIndex();
+    if (idx < 0 || sensorComboBox->currentText().startsWith("(")) return;
+
+    std::string path = sensorComboBox->currentData().toString().toStdString();
+    if (path.empty()) path = sensorComboBox->currentText().toStdString();
+
+    QString current = sensorFormatEdit->toPlainText();
+    if (!current.isEmpty() && !current.endsWith(' '))
+        current += "  ";
+    current += "[" + QString::fromStdString(path) + "]";
+    sensorFormatEdit->setPlainText(current);
+}
+
+void DeviceSettingsPage::on_sensorDataUpdated()
+{
+    if (!plugin->sensor_manager) return;
+
+    auto sensors = plugin->sensor_manager->getSensorList();
+
+    bool unpopulated = (sensorComboBox->count() <= 1 && (sensorComboBox->count() == 0 || sensorComboBox->itemText(0).startsWith("(")));
+    if (!manual_refresh_requested && !unpopulated)
+    {
+        // Do not touch sensorComboBox during background automatic updates
+        return;
+    }
+
+    manual_refresh_requested = false;
+
+    QString current_text = sensorComboBox->currentText();
+
+    sensorComboBox->blockSignals(true);
+    sensorComboBox->clear();
+
+    for (const auto& s : sensors)
+    {
+        if (s.path != "Sensor" && s.value != "Value") {
+            QString label = QString::fromStdString(s.path);
+            sensorComboBox->addItem(label, QString::fromStdString(s.path));
+        }
+    }
+
+    if (sensorComboBox->count() == 0)
+        sensorComboBox->addItem("(no sensors found)");
+
+    // Restore selection if possible
+    int restore = sensorComboBox->findText(current_text);
+    if (restore >= 0) sensorComboBox->setCurrentIndex(restore);
+
+    sensorComboBox->blockSignals(false);
+
+    sensorStatusLabel->setText(QString("Last updated: %1 sensors").arg(sensors.size()));
+    sensorStatusLabel->setStyleSheet("color: green; font-style: italic;");
 }
 
 void DeviceSettingsPage::on_alignRadio_toggled()

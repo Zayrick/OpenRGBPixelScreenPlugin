@@ -24,6 +24,8 @@
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QRadioButton>
+#include <QButtonGroup>
+#include <QMutex>
 #include "PixelScreenPlugin.h"
 
 class DeviceSettingsPage : public QWidget
@@ -42,6 +44,10 @@ private slots:
     void on_fontSizeCombo_currentTextChanged(const QString &text);
     void on_customTextEdit_textChanged();
     void on_timeFormatEdit_textChanged();
+    void on_sensorFormatEdit_textChanged();
+    void on_sensorIntervalRadio_toggled();
+    void on_sensorRefreshButton_clicked();
+    void on_sensorAddButton_clicked();
     void on_alignRadio_toggled();
     void on_pixelArtEdit_textChanged();
     void on_scrollDirCombo_currentTextChanged(const QString &text);
@@ -51,17 +57,30 @@ private slots:
     void on_invertColorCheck_stateChanged(int state);
     void on_paddingXSpin_valueChanged(int value);
     void on_paddingYSpin_valueChanged(int value);
+    void on_sensorDataUpdated();
 
 private:
     PixelScreenPlugin *plugin;
     std::string device_name;
     bool loading_ui = false;
+    bool manual_refresh_requested = false;
 
     QCheckBox   *enabledCheck;
     QComboBox   *displayModeCombo;
     QComboBox   *fontSizeCombo;
     QTextEdit   *customTextEdit;
     QTextEdit   *timeFormatEdit;
+    // Sensor UI
+    QTextEdit   *sensorFormatEdit;
+    QComboBox   *sensorComboBox;
+    QPushButton *sensorAddButton;
+    QPushButton *sensorRefreshButton;
+    QRadioButton *sensorInterval250Radio;
+    QRadioButton *sensorInterval500Radio;
+    QRadioButton *sensorInterval1000Radio;
+    QRadioButton *sensorInterval2000Radio;
+    QLabel      *sensorStatusLabel;
+    // Alignment
     QRadioButton *alignStartRadio;
     QRadioButton *alignCenterRadio;
     QRadioButton *alignEndRadio;
@@ -77,4 +96,8 @@ private:
     QSpinBox    *paddingYSpin;
 
     void UpdateColorButton(QPushButton* button, unsigned char r, unsigned char g, unsigned char b);
+    void UpdateSensorUI(bool sensor_mode);
+
+    QButtonGroup *alignGroup;
+    QButtonGroup *sensorIntervalGroup;
 };

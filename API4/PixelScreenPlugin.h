@@ -21,6 +21,7 @@
 #include "OpenRGBPluginInterface.h"
 #include "RGBController.h"
 #include "LogManager.h"
+#include "HardwareSensorManager.h"
 
 // Font structure representing a character's LED matrix layout
 struct Glyph
@@ -44,10 +45,12 @@ struct MatrixZoneTarget
 struct DeviceMatrixSettings
 {
     bool enabled = false;
-    int display_mode = 1;       // 0: Time, 1: Custom Text, 2: Pixel Art
+    int display_mode = 1;       // 0: Time, 1: Custom Text, 2: Pixel Art, 3: Pixel Art (alt), 4: Sensor Data
     std::string font_size = "Medium"; // "Small", "Medium", "Large", "Chinese"
     std::string custom_text = "OpenRGB";
     std::string time_format = "hh:mm tt";
+    std::string sensor_format = "CPU: [CPU\\Load\\CPU Total]";
+    int sensor_update_interval = 1000; // ms: 250, 500, 1000, 2000
     std::string pixel_art_json = "[ [1, 0, 0, 1], [0, 1, 1, 0], [0, 1, 1, 0], [1, 0, 0, 1] ]"; // 2D Pixel Art Matrix JSON
     std::string scroll_direction = "Left"; // "Off", "Left", "Right", "Ping-Pong"
     int scroll_speed = 50;      // 1 to 100
@@ -130,8 +133,12 @@ public:
     static void                 OnDeviceListChanged(void* arg);
     static void                 OnControllerUpdate(void* arg);
 
+    HardwareSensorManager*      sensor_manager = nullptr;
+    QTimer*                     sensor_timer   = nullptr;
+
 private slots:
     void                        RenderFrame();
+    void                        OnSensorDataUpdated();
 
 public:
     /*-----------------------------------------------------*\
@@ -150,6 +157,8 @@ private:
     PixelScreenTab*                    ui = nullptr;
     QTimer*                             render_timer = nullptr;
     bool                                in_callback = false;
+    std::string                         sensor_resolved_text;
+    QMutex                              sensor_text_mutex;
     
     // Font databases loaded from JSON
     std::map<char, Glyph>               small_letters;
