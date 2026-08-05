@@ -16,6 +16,8 @@
 #include <QTimer>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QCoreApplication>
+#include <QPointer>
 #include <map>
 #include <string>
 #include <vector>
@@ -47,14 +49,41 @@ public:
     explicit HardwareSensorManager(QObject* parent = nullptr)
         : QObject(parent)
     {
+        if (qApp)
+        {
+            connect(qApp, &QCoreApplication::aboutToQuit, this, &HardwareSensorManager::onAboutToQuit);
+        }
     }
 
-    ~HardwareSensorManager() = default;
+    ~HardwareSensorManager()
+    {
+        onAboutToQuit();
+    }
+
+    // Immediately stop operations and terminate active child process on shutdown/unload
+    void onAboutToQuit()
+    {
+        is_shutting_down = true;
+        if (current_proc)
+        {
+            current_proc->disconnect();
+            if (current_proc->state() != QProcess::NotRunning)
+            {
+                current_proc->kill();
+                current_proc->waitForFinished(300);
+            }
+            current_proc->deleteLater();
+            current_proc = nullptr;
+        }
+    }
 
     // Kick off an async sensor fetch. Emits sensorDataUpdated() on success,
     // sensorFetchError() on failure.
     void fetchSensors()
     {
+        if (is_shutting_down || (qApp && QCoreApplication::closingDown()))
+            return;
+
 #ifdef _WIN32
         fetchLHMViaCurl();
 #else
@@ -148,11 +177,26 @@ private:
     // ── Windows: LibreHardwareMonitor via curl (built-in on Win10+) ──────────
     void fetchLHMViaCurl()
     {
-        QProcess* proc = new QProcess(this);
-        connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                this, [this, proc](int exit_code, QProcess::ExitStatus)
+        if (is_shutting_down || (qApp && QCoreApplication::closingDown()))
+            return;
+
+        // Prevent spawning multiple concurrent curl processes if previous fetch is still running
+        if (current_proc && current_proc->state() != QProcess::NotRunning)
+            return;
+
+        current_proc = new QProcess(this);
+
+        connect(current_proc.data(), QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                this, [this](int exit_code, QProcess::ExitStatus)
         {
+            if (!current_proc) return;
+            QProcess* proc = current_proc.data();
+            current_proc = nullptr;
             proc->deleteLater();
+
+            if (is_shutting_down || (qApp && QCoreApplication::closingDown()))
+                return;
+
             if (exit_code != 0)
             {
                 QString err = QString::fromLocal8Bit(proc->readAllStandardError());
@@ -164,19 +208,25 @@ private:
             parseLHMJson(data);
         });
 
-        // Handle failure to start asynchronously — never block the UI thread
-        connect(proc, &QProcess::errorOccurred, this, [this, proc](QProcess::ProcessError err)
+        connect(current_proc.data(), &QProcess::errorOccurred, this, [this](QProcess::ProcessError err)
         {
+            if (is_shutting_down || (qApp && QCoreApplication::closingDown()))
+                return;
+
             if (err == QProcess::FailedToStart)
             {
-                proc->deleteLater();
+                if (current_proc)
+                {
+                    current_proc->deleteLater();
+                    current_proc = nullptr;
+                }
                 emit sensorFetchError("curl not found — install curl or add it to PATH");
             }
         });
 
-        // curl flags: silent, fail on HTTP error, 3-second timeout
-        proc->start("curl", QStringList()
-                    << "-s" << "--fail" << "--max-time" << "3"
+        // curl flags: silent, fail on HTTP error, 2-second timeouts
+        current_proc->start("curl", QStringList()
+                    << "-s" << "--fail" << "--connect-timeout" << "2" << "--max-time" << "2"
                     << "http://127.0.0.1:8085/data.json");
     }
 
@@ -196,7 +246,8 @@ private:
         }
         catch (...)
         {
-            emit sensorFetchError("Failed to parse LibreHardwareMonitor JSON");
+            if (!is_shutting_down && (!qApp || !QCoreApplication::closingDown()))
+                emit sensorFetchError("Failed to parse LibreHardwareMonitor JSON");
         }
     }
 
@@ -350,6 +401,8 @@ private:
     }
 #endif
 
+    bool                               is_shutting_down = false;
+    QPointer<QProcess>                 current_proc;
     mutable QMutex                     mutex;
     std::map<std::string, std::string> sensor_map;
     std::vector<SensorEntry>           sensor_list;

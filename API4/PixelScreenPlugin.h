@@ -129,16 +129,19 @@ public:
     void                        SaveSettings();
     
     std::vector<MatrixZoneTarget> GetMatrixZones();
-    void                        UpdateControllers();
     static void                 OnDeviceListChanged(void* arg);
     static void                 OnControllerUpdate(void* arg);
 
     HardwareSensorManager*      sensor_manager = nullptr;
     QTimer*                     sensor_timer   = nullptr;
 
+public slots:
+    void                        UpdateControllers();
+
 private slots:
     void                        RenderFrame();
     void                        OnSensorDataUpdated();
+    void                        OnSensorTimerTimeout();
 
 public:
     /*-----------------------------------------------------*\

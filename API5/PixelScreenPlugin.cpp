@@ -73,7 +73,7 @@ void PixelScreenPlugin::Load(OpenRGBPluginAPIInterface* api_interface_ptr)
             this, &PixelScreenPlugin::OnSensorDataUpdated);
     sensor_timer = new QTimer(this);
     sensor_timer->setInterval(1000);
-    connect(sensor_timer, &QTimer::timeout, sensor_manager, &HardwareSensorManager::fetchSensors);
+    connect(sensor_timer, &QTimer::timeout, this, &PixelScreenPlugin::OnSensorTimerTimeout);
     sensor_timer->start();
 
     // Create settings tab UI (DeviceSettingsPage constructors will find sensor_manager ready)
@@ -85,7 +85,7 @@ void PixelScreenPlugin::Load(OpenRGBPluginAPIInterface* api_interface_ptr)
     connect(render_timer, &QTimer::timeout, this, &PixelScreenPlugin::RenderFrame);
     render_timer->start(20); // 50 FPS timer tick
 
-    sensor_manager->fetchSensors(); // initial fetch (after UI is ready to receive the signal)
+    OnSensorTimerTimeout(); // fetch only if enabled && Sensor Data mode
 }
 
 QWidget* PixelScreenPlugin::GetWidget()
@@ -115,6 +115,7 @@ void PixelScreenPlugin::Unload()
     }
     if (sensor_manager)
     {
+        sensor_manager->onAboutToQuit();
         sensor_manager->deleteLater();
         sensor_manager = nullptr;
     }
@@ -165,6 +166,7 @@ void PixelScreenPlugin::ProfileManagerUpdated(unsigned int /*update_reason*/)
 
 void PixelScreenPlugin::ResourceManagerUpdated(unsigned int /*update_reason*/)
 {
+    QMetaObject::invokeMethod(this, "UpdateControllers", Qt::QueuedConnection);
 }
 
 void PixelScreenPlugin::SettingsManagerUpdated(unsigned int /*update_reason*/)
@@ -697,6 +699,21 @@ void PixelScreenPlugin::OnSensorDataUpdated()
 {
     // Sensor cache is updated inside HardwareSensorManager.
     // resolveFormat() is called per-frame in OverlayTextOnController.
+}
+
+void PixelScreenPlugin::OnSensorTimerTimeout()
+{
+    if (!sensor_manager) return;
+
+    // Only run curl/fetchSensors if at least one enabled device is set to "Sensor Data" mode (display_mode == 4)
+    for (const auto& pair : settings.device_settings)
+    {
+        if (pair.second.enabled && pair.second.display_mode == 4)
+        {
+            sensor_manager->fetchSensors();
+            break;
+        }
+    }
 }
 
 void PixelScreenPlugin::RenderFrame()
