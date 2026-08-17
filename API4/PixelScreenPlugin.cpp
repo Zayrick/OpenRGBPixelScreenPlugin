@@ -19,10 +19,16 @@
 #include <QMetaObject>
 #include <fstream>
 #include <cmath>
+#include <limits>
 
 #include <algorithm>
 ResourceManagerInterface* PixelScreenPlugin::api = nullptr;
 PixelScreenPlugin* PixelScreenPlugin::plugin_instance = nullptr;
+
+PixelScreenPlugin::~PixelScreenPlugin()
+{
+    PixelScreenDeviceUpdateHook::Uninstall(this);
+}
 
 
 OpenRGBPluginInfo PixelScreenPlugin::GetPluginInfo()
@@ -83,11 +89,6 @@ void PixelScreenPlugin::Load(ResourceManagerInterface* resource_manager_ptr)
     ui = new PixelScreenTab(this);
     ui->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    // Start rendering frame timer
-    render_timer = new QTimer(this);
-    connect(render_timer, &QTimer::timeout, this, &PixelScreenPlugin::RenderFrame);
-    render_timer->start(20); // 50 FPS timer tick
-
     OnSensorTimerTimeout(); // fetch only if enabled && Sensor Data mode
 }
 
@@ -105,17 +106,17 @@ void PixelScreenPlugin::Unload()
 {
     LOG_INFO("[PixelScreenPlugin] Unloading\n");
 
+    // Stop all new render callbacks and wait for in-flight device sends
+    // before any plugin-owned state can be destroyed.
+    PixelScreenDeviceUpdateHook::Uninstall(this);
+    hooked_controllers.clear();
+
     if (sensor_timer) { sensor_timer->stop(); sensor_timer->deleteLater(); sensor_timer = nullptr; }
     if (sensor_manager)
     {
         sensor_manager->onAboutToQuit();
         sensor_manager->deleteLater();
         sensor_manager = nullptr;
-    }
-
-    if (render_timer)
-    {
-        render_timer->stop();
     }
 
     SaveSettings();
@@ -125,14 +126,6 @@ void PixelScreenPlugin::Unload()
         // Unregister device list callback
         api->UnregisterDeviceListChangeCallback(OnDeviceListChanged, this);
 
-        // Unregister update callbacks
-        for (RGBController* controller : api->GetRGBControllers())
-        {
-            if (controller)
-            {
-                controller->UnregisterUpdateCallback(this);
-            }
-        }
     }
     plugin_instance = nullptr;
 }
@@ -160,65 +153,91 @@ void PixelScreenPlugin::OnDeviceListChanged(void* arg)
     QMetaObject::invokeMethod(plugin, "UpdateControllers", Qt::QueuedConnection);
 }
 
-void PixelScreenPlugin::OnControllerUpdate(void* arg)
-{
-    if (!plugin_instance) return;
-    if (plugin_instance->in_callback) return;
-
-    PixelScreenPlugin* plugin = static_cast<PixelScreenPlugin*>(arg);
-    if (!plugin || plugin != plugin_instance) return;
-
-    // Guard against recursion when UpdateLEDs is called
-    plugin_instance->in_callback = true;
-    
-    std::shared_lock<std::shared_mutex> lock(plugin->matrix_zones_mutex);
-    for (const auto& target : plugin->matrix_zones)
-    {
-        if (target.controller)
-        {
-            auto it = plugin->settings.device_settings.find(target.display_name);
-            if (it != plugin->settings.device_settings.end() && it->second.enabled)
-            {
-                plugin->OverlayTextOnController(target, it->second, true);
-            }
-        }
-    }
-    
-    plugin_instance->in_callback = false;
-}
-
 /*---------------------------------------------------------*\
 | Controller Zones Filtering                                |
 \*---------------------------------------------------------*/
 void PixelScreenPlugin::UpdateControllers()
 {
-    std::unique_lock<std::shared_mutex> lock(matrix_zones_mutex);
-
-    matrix_zones.clear();
+    std::vector<MatrixZoneTarget> new_matrix_zones;
+    std::vector<RGBController*> controllers_to_hook;
 
     for (RGBController* controller : api->GetRGBControllers())
     {
         if (!controller) continue;
         
-        controller->UnregisterUpdateCallback(this);
+        bool has_matrix_zone = false;
 
         for (unsigned int zone_idx = 0; zone_idx < controller->zones.size(); zone_idx++)
         {
             if (controller->zones[zone_idx].type == ZONE_TYPE_MATRIX)
             {
+                const zone& controller_zone = controller->zones[zone_idx];
+                if (!controller_zone.matrix_map
+                    || !controller_zone.matrix_map->map
+                    || controller_zone.matrix_map->width == 0
+                    || controller_zone.matrix_map->height == 0
+                    || controller_zone.matrix_map->height
+                       > std::numeric_limits<std::size_t>::max() / controller_zone.matrix_map->width)
+                {
+                    continue;
+                }
+
                 MatrixZoneTarget target;
                 target.controller = controller;
                 target.zone_idx = zone_idx;
+                target.start_idx = controller_zone.start_idx;
+                target.matrix_width = controller_zone.matrix_map->width;
+                target.matrix_height = controller_zone.matrix_map->height;
+                target.matrix_map.assign(
+                    controller_zone.matrix_map->map,
+                    controller_zone.matrix_map->map
+                        + static_cast<std::size_t>(target.matrix_width) * target.matrix_height);
                 target.controller_name = controller->GetName();
                 target.zone_name = controller->GetZoneName(zone_idx);
                 target.display_name = target.controller_name + " - " + target.zone_name;
                 
-                matrix_zones.push_back(target);
+                new_matrix_zones.push_back(std::move(target));
+                has_matrix_zone = true;
             }
         }
-        
-        // Register update callback for effect engine overlay support
-        controller->RegisterUpdateCallback(OnControllerUpdate, this);
+
+        if (has_matrix_zone)
+        {
+            controllers_to_hook.push_back(controller);
+        }
+    }
+
+    {
+        std::unique_lock<std::shared_mutex> lock(matrix_zones_mutex);
+        matrix_zones.swap(new_matrix_zones);
+
+        std::vector<RGBController*> installed_controllers;
+        installed_controllers.reserve(controllers_to_hook.size());
+        for (RGBController* controller : controllers_to_hook)
+        {
+            if (PixelScreenDeviceUpdateHook::Install(controller, this, OnDeviceUpdateHook))
+            {
+                installed_controllers.push_back(controller);
+            }
+            else
+            {
+                LOG_ERROR("[PixelScreenPlugin] Failed to hook device output for %s\n", controller->GetName().c_str());
+            }
+        }
+
+        std::vector<RGBController*> old_controllers;
+        old_controllers.swap(hooked_controllers);
+        hooked_controllers = installed_controllers;
+        lock.unlock();
+
+        for (RGBController* old_controller : old_controllers)
+        {
+            if (std::find(installed_controllers.begin(), installed_controllers.end(), old_controller)
+                == installed_controllers.end())
+            {
+                PixelScreenDeviceUpdateHook::UninstallController(old_controller, this);
+            }
+        }
     }
 
     if (ui)
@@ -337,6 +356,8 @@ void PixelScreenPlugin::LoadFonts()
 
 void PixelScreenPlugin::LoadSettings()
 {
+    std::lock_guard<std::recursive_mutex> settings_lock(settings_mutex);
+
     std::string settings_path = (api->GetConfigurationDirectory() / "plugins" / "settings" / "PixelScreenSettings.json").string();
     QFile file(QString::fromStdString(settings_path));
     if (file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -388,6 +409,8 @@ void PixelScreenPlugin::LoadSettings()
 
 void PixelScreenPlugin::SaveSettings()
 {
+    std::lock_guard<std::recursive_mutex> settings_lock(settings_mutex);
+
     // Create folders if they do not exist
     std::string settings_dir = (api->GetConfigurationDirectory() / "plugins" / "settings").string();
     QDir().mkpath(QString::fromStdString(settings_dir));
@@ -677,43 +700,170 @@ std::string PixelScreenPlugin::FormatDateTime(const std::string& format)
     return str;
 }
 
-void PixelScreenPlugin::RenderFrame()
+void PixelScreenPlugin::AdvanceAnimation(DeviceMatrixSettings& dev_s)
 {
-    std::shared_lock<std::shared_mutex> lock(matrix_zones_mutex);
-    if (matrix_zones.empty()) return;
-
-    in_callback = true;
-    for (const auto& target : matrix_zones)
+    const auto now = std::chrono::steady_clock::now();
+    if (dev_s.last_animation_update.time_since_epoch().count() == 0)
     {
-        auto it = settings.device_settings.find(target.display_name);
-        if (it != settings.device_settings.end() && it->second.enabled)
+        dev_s.last_animation_update = now;
+        return;
+    }
+
+    double elapsed = std::chrono::duration<double>(now - dev_s.last_animation_update).count();
+    dev_s.last_animation_update = now;
+    if (elapsed <= 0.0)
+    {
+        return;
+    }
+
+    /* Keep the configured animation FPS as a visual sampling rate, without
+     * delaying or dropping any hardware update.  The old 20 ms timer moved
+     * scroll_speed / 100 pixels at 50 Hz, hence scroll_speed / 2 px/s. */
+    const int animation_fps = std::max(1, std::min(60, dev_s.fps));
+    const double frame_time = 1.0 / static_cast<double>(animation_fps);
+    dev_s.animation_accumulator += elapsed;
+    const double animation_frames = std::floor(dev_s.animation_accumulator / frame_time);
+    if (animation_frames < 1.0)
+    {
+        return;
+    }
+
+    const double consumed_time = animation_frames * frame_time;
+    dev_s.animation_accumulator -= consumed_time;
+    const float distance = static_cast<float>((dev_s.scroll_speed / 2.0) * consumed_time);
+
+    if (dev_s.scroll_direction == "Left")
+    {
+        dev_s.scroll_offset -= distance;
+    }
+    else if (dev_s.scroll_direction == "Right")
+    {
+        dev_s.scroll_offset += distance;
+    }
+    else if (dev_s.scroll_direction == "Ping-Pong")
+    {
+        dev_s.scroll_offset += distance * dev_s.ping_pong_direction;
+    }
+}
+
+void PixelScreenPlugin::OnDeviceUpdateHook(
+    void* callback_arg,
+    RGBController* controller,
+    const PixelScreenDeviceUpdateHook::OriginalCall& original_call)
+{
+    PixelScreenPlugin* plugin = static_cast<PixelScreenPlugin*>(callback_arg);
+    if (!plugin || plugin != plugin_instance)
+    {
+        original_call.Invoke(controller);
+        return;
+    }
+
+    plugin->SendOverlayFrame(controller, original_call);
+}
+
+void PixelScreenPlugin::SendOverlayFrame(
+    RGBController* controller,
+    const PixelScreenDeviceUpdateHook::OriginalCall& original_call)
+{
+    if (!controller)
+    {
+        return;
+    }
+
+    std::unique_lock<std::recursive_mutex> settings_lock(settings_mutex);
+    std::shared_lock<std::shared_mutex> zones_lock(matrix_zones_mutex);
+
+    bool has_enabled_zone = false;
+    for (const MatrixZoneTarget& target : matrix_zones)
+    {
+        const auto setting = settings.device_settings.find(target.display_name);
+        if (target.controller == controller
+            && setting != settings.device_settings.end()
+            && setting->second.enabled)
         {
-            DeviceMatrixSettings& dev_s = it->second;
-
-            float speed_step = (dev_s.scroll_speed / 100.0f) * 1.0f;
-            if (dev_s.scroll_direction == "Left")
-            {
-                dev_s.scroll_offset -= speed_step;
-            }
-            else if (dev_s.scroll_direction == "Right")
-            {
-                dev_s.scroll_offset += speed_step;
-            }
-            else if (dev_s.scroll_direction == "Ping-Pong")
-            {
-                dev_s.scroll_offset += speed_step * dev_s.ping_pong_direction;
-            }
-
-            OverlayTextOnController(target, dev_s, true);
+            has_enabled_zone = true;
+            break;
         }
     }
-    in_callback = false;
+
+    const std::size_t color_count = controller->colors.size();
+    RGBColor* colors = color_count == 0 ? nullptr : controller->colors.data();
+    if (!has_enabled_zone || !colors)
+    {
+        zones_lock.unlock();
+        settings_lock.unlock();
+        original_call.Invoke(controller);
+        return;
+    }
+
+    std::vector<RGBColor> backup_colors;
+    std::vector<RGBColor> rendered_colors;
+    bool original_started = false;
+
+    auto restore_colors = [&]
+    {
+        if (backup_colors.size() != color_count)
+        {
+            return;
+        }
+
+        if (rendered_colors.size() == color_count
+            && std::equal(rendered_colors.begin(), rendered_colors.end(), colors))
+        {
+            std::copy(backup_colors.begin(), backup_colors.end(), colors);
+        }
+        else if (rendered_colors.empty())
+        {
+            std::copy(backup_colors.begin(), backup_colors.end(), colors);
+        }
+    };
+
+    try
+    {
+        backup_colors.assign(colors, colors + color_count);
+
+        for (const MatrixZoneTarget& target : matrix_zones)
+        {
+            if (target.controller != controller)
+            {
+                continue;
+            }
+
+            auto setting = settings.device_settings.find(target.display_name);
+            if (setting == settings.device_settings.end() || !setting->second.enabled)
+            {
+                continue;
+            }
+
+            AdvanceAnimation(setting->second);
+            OverlayTextOnBuffer(target, setting->second, colors, color_count);
+        }
+
+        rendered_colors.assign(colors, colors + color_count);
+        zones_lock.unlock();
+        settings_lock.unlock();
+        original_started = true;
+        original_call.Invoke(controller);
+        restore_colors();
+    }
+    catch (...)
+    {
+        if (zones_lock.owns_lock()) zones_lock.unlock();
+        if (settings_lock.owns_lock()) settings_lock.unlock();
+        restore_colors();
+        if (!original_started)
+        {
+            original_call.Invoke(controller);
+            return;
+        }
+        throw;
+    }
 }
 
 void PixelScreenPlugin::OnSensorDataUpdated()
 {
     // The sensor_manager caches values internally; nothing more needed here.
-    // The resolved text is computed per-frame in OverlayTextOnController.
+    // The resolved text is computed for each hardware-send event.
 }
 
 void PixelScreenPlugin::OnSensorTimerTimeout()
@@ -721,19 +871,30 @@ void PixelScreenPlugin::OnSensorTimerTimeout()
     if (!sensor_manager) return;
 
     // Only run curl/fetchSensors if at least one enabled device is set to "Sensor Data" mode (display_mode == 4)
-    for (const auto& pair : settings.device_settings)
     {
-        if (pair.second.enabled && pair.second.display_mode == 4)
+        std::lock_guard<std::recursive_mutex> settings_lock(settings_mutex);
+        bool sensor_mode_enabled = false;
+        for (const auto& pair : settings.device_settings)
         {
-            sensor_manager->fetchSensors();
-            break;
+            if (pair.second.enabled && pair.second.display_mode == 4)
+            {
+                sensor_mode_enabled = true;
+                break;
+            }
         }
+
+        if (!sensor_mode_enabled) return;
     }
+
+    sensor_manager->fetchSensors();
 }
 
-void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, DeviceMatrixSettings& dev_s, bool transparent)
+void PixelScreenPlugin::OverlayTextOnBuffer(const MatrixZoneTarget& target,
+                                            DeviceMatrixSettings& dev_s,
+                                            RGBColor* colors,
+                                            std::size_t color_count)
 {
-    if (!target.controller) return;
+    if (!target.controller || !colors) return;
 
     struct RenderedGlyph {
         Glyph glyph;
@@ -797,11 +958,10 @@ void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, 
                     rendered_glyphs.push_back({custom_glyph, 0});
                     int total_width = custom_glyph.width;
 
-                    if (!target.controller->zones[target.zone_idx].matrix_map) return;
-                    unsigned int matrix_w = target.controller->zones[target.zone_idx].matrix_map->width;
-                    unsigned int matrix_h = target.controller->zones[target.zone_idx].matrix_map->height;
-                    const unsigned int* map = target.controller->zones[target.zone_idx].matrix_map->map;
-                    unsigned int start_idx = target.controller->zones[target.zone_idx].start_idx;
+                    const unsigned int matrix_w = target.matrix_width;
+                    const unsigned int matrix_h = target.matrix_height;
+                    const unsigned int* map = target.matrix_map.data();
+                    const unsigned int start_idx = target.start_idx;
                     
                     if (matrix_w == 0 || matrix_h == 0 || !map) return;
 
@@ -881,7 +1041,8 @@ void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, 
                                 }
                             }
                             
-                            RGBColor underlying_color = (start_idx + led_idx < target.controller->colors.size()) ? target.controller->colors[start_idx + led_idx] : ToRGBColor(0, 0, 0);
+                            const std::size_t color_index = static_cast<std::size_t>(start_idx) + led_idx;
+                            RGBColor underlying_color = color_index < color_count ? colors[color_index] : ToRGBColor(0, 0, 0);
                             
                             RGBColor pixel_color;
                             if (dev_s.invert_color)
@@ -893,7 +1054,10 @@ void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, 
                                 pixel_color = pixel_on ? text_color : underlying_color;
                             }
                             
-                            target.controller->SetLED(start_idx + led_idx, pixel_color);
+                            if (color_index < color_count)
+                            {
+                                colors[color_index] = pixel_color;
+                            }
                         }
                     }
                     return;
@@ -976,11 +1140,10 @@ void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, 
         }
     }
 
-    if (!target.controller->zones[target.zone_idx].matrix_map) return;
-    unsigned int matrix_w = target.controller->zones[target.zone_idx].matrix_map->width;
-    unsigned int matrix_h = target.controller->zones[target.zone_idx].matrix_map->height;
-    const unsigned int* map = target.controller->zones[target.zone_idx].matrix_map->map;
-    unsigned int start_idx = target.controller->zones[target.zone_idx].start_idx;
+    const unsigned int matrix_w = target.matrix_width;
+    const unsigned int matrix_h = target.matrix_height;
+    const unsigned int* map = target.matrix_map.data();
+    const unsigned int start_idx = target.start_idx;
     
     if (matrix_w == 0 || matrix_h == 0 || !map) return;
     
@@ -1067,7 +1230,8 @@ void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, 
                 }
             }
             
-            RGBColor underlying_color = (start_idx + led_idx < target.controller->colors.size()) ? target.controller->colors[start_idx + led_idx] : ToRGBColor(0, 0, 0);
+            const std::size_t color_index = static_cast<std::size_t>(start_idx) + led_idx;
+            RGBColor underlying_color = color_index < color_count ? colors[color_index] : ToRGBColor(0, 0, 0);
             
             RGBColor pixel_color;
             if (dev_s.invert_color)
@@ -1079,12 +1243,10 @@ void PixelScreenPlugin::OverlayTextOnController(const MatrixZoneTarget& target, 
                 pixel_color = pixel_on ? text_color : underlying_color;
             }
             
-            target.controller->SetLED(start_idx + led_idx, pixel_color);
+            if (color_index < color_count)
+            {
+                colors[color_index] = pixel_color;
+            }
         }
-    }
-    
-    if (!transparent)
-    {
-        target.controller->UpdateLEDs();
     }
 }

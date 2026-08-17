@@ -221,6 +221,7 @@ void DeviceSettingsPage::LoadSettingsToPage()
 {
     loading_ui = true;
 
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
 
     enabledCheck->setChecked(dev_s.enabled);
@@ -299,6 +300,7 @@ void DeviceSettingsPage::UpdateColorButton(QPushButton* button, unsigned char r,
 void DeviceSettingsPage::on_enabledCheck_stateChanged(int state)
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.enabled = (state == Qt::Checked);
     plugin->SaveSettings();
@@ -307,6 +309,7 @@ void DeviceSettingsPage::on_enabledCheck_stateChanged(int state)
 void DeviceSettingsPage::on_displayModeCombo_currentIndexChanged(int index)
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
 
     // Combo: 0=Time, 1=Custom, 2=PixelArt, 3=Sensor
@@ -329,6 +332,7 @@ void DeviceSettingsPage::on_displayModeCombo_currentIndexChanged(int index)
 void DeviceSettingsPage::on_fontSizeCombo_currentTextChanged(const QString &text)
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.font_size = text.toStdString();
     plugin->SaveSettings();
@@ -337,6 +341,7 @@ void DeviceSettingsPage::on_fontSizeCombo_currentTextChanged(const QString &text
 void DeviceSettingsPage::on_customTextEdit_textChanged()
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.custom_text = customTextEdit->toPlainText().toStdString();
     plugin->SaveSettings();
@@ -345,6 +350,7 @@ void DeviceSettingsPage::on_customTextEdit_textChanged()
 void DeviceSettingsPage::on_timeFormatEdit_textChanged()
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.time_format = timeFormatEdit->toPlainText().toStdString();
     plugin->SaveSettings();
@@ -353,6 +359,7 @@ void DeviceSettingsPage::on_timeFormatEdit_textChanged()
 void DeviceSettingsPage::on_sensorFormatEdit_textChanged()
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.sensor_format = sensorFormatEdit->toPlainText().toStdString();
     plugin->SaveSettings();
@@ -361,6 +368,7 @@ void DeviceSettingsPage::on_sensorFormatEdit_textChanged()
 void DeviceSettingsPage::on_sensorIntervalRadio_toggled()
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     if (sensorInterval250Radio->isChecked())       dev_s.sensor_update_interval = 250;
     else if (sensorInterval500Radio->isChecked())  dev_s.sensor_update_interval = 500;
@@ -442,6 +450,7 @@ void DeviceSettingsPage::on_sensorDataUpdated()
 void DeviceSettingsPage::on_alignRadio_toggled()
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     if (alignStartRadio->isChecked()) dev_s.text_align = 0;
     else if (alignCenterRadio->isChecked()) dev_s.text_align = 1;
@@ -452,6 +461,7 @@ void DeviceSettingsPage::on_alignRadio_toggled()
 void DeviceSettingsPage::on_pixelArtEdit_textChanged()
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.pixel_art_json = pixelArtEdit->toPlainText().toStdString();
     plugin->SaveSettings();
@@ -460,6 +470,7 @@ void DeviceSettingsPage::on_pixelArtEdit_textChanged()
 void DeviceSettingsPage::on_scrollDirCombo_currentTextChanged(const QString &text)
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.scroll_direction = text.toStdString();
     plugin->SaveSettings();
@@ -468,6 +479,7 @@ void DeviceSettingsPage::on_scrollDirCombo_currentTextChanged(const QString &tex
 void DeviceSettingsPage::on_scrollSpeedSlider_valueChanged(int value)
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.scroll_speed = value;
     scrollSpeedValueLabel->setText(QString::number(value));
@@ -476,11 +488,18 @@ void DeviceSettingsPage::on_scrollSpeedSlider_valueChanged(int value)
 
 void DeviceSettingsPage::on_textColorButton_clicked()
 {
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    QColor current(dev_s.text_r, dev_s.text_g, dev_s.text_b);
+    QColor current;
+    {
+        std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
+        const DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
+        current = QColor(dev_s.text_r, dev_s.text_g, dev_s.text_b);
+    }
+
     QColor selected = QColorDialog::getColor(current, this, "Select Text Color");
     if (selected.isValid())
     {
+        std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
+        DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
         dev_s.text_r = selected.red();
         dev_s.text_g = selected.green();
         dev_s.text_b = selected.blue();
@@ -492,6 +511,7 @@ void DeviceSettingsPage::on_textColorButton_clicked()
 void DeviceSettingsPage::on_fpsSlider_valueChanged(int value)
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.fps = value;
     fpsValueLabel->setText(QString::number(value));
@@ -501,6 +521,7 @@ void DeviceSettingsPage::on_fpsSlider_valueChanged(int value)
 void DeviceSettingsPage::on_invertColorCheck_stateChanged(int state)
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.invert_color = (state == Qt::Checked);
     plugin->SaveSettings();
@@ -509,6 +530,7 @@ void DeviceSettingsPage::on_invertColorCheck_stateChanged(int state)
 void DeviceSettingsPage::on_paddingXSpin_valueChanged(int value)
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.padding_x = value;
     plugin->SaveSettings();
@@ -517,6 +539,7 @@ void DeviceSettingsPage::on_paddingXSpin_valueChanged(int value)
 void DeviceSettingsPage::on_paddingYSpin_valueChanged(int value)
 {
     if (loading_ui) return;
+    std::lock_guard<std::recursive_mutex> settings_lock(plugin->settings_mutex);
     DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
     dev_s.padding_y = value;
     plugin->SaveSettings();

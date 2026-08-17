@@ -85,6 +85,7 @@ SOURCES +=                                                                      
 
 # Header files
 HEADERS +=                                                                                      \
+    ../common/DeviceUpdateVTableHook.h                                                          \
     PixelScreenPlugin.h                                                                         \
     PixelScreenTab.h                                                                            \
     DeviceSettingsPage.h                                                                        \
@@ -134,6 +135,7 @@ win32:DEFINES +=                                                                
 
 unix:!macx {
     QMAKE_CXXFLAGS += -std=c++17 -Wno-psabi
+    LIBS += -ldl
     target.path=$$PREFIX/lib/openrgb/plugins/
     INSTALLS += target
 }
