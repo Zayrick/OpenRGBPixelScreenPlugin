@@ -17,12 +17,6 @@
 
 Render custom scrolling text, clock, hardware sensors and pixel art on OpenRGB matrices.
 
-## Render synchronization
-
-The plugin no longer uses a fixed 20 ms render timer or races an `UpdateLEDs()` notification callback. It hooks the final device-output virtual functions of each target controller in-process, overlays the pixel-screen content immediately before the driver serializes the colors, then restores the upstream color buffer after the send. Full-controller, zone, and single-LED output paths are all covered.
-
-Animation advances on upstream send events; when nothing submits updates to a device, scrolling does not refresh by itself. The plugin module remains loaded until the OpenRGB process exits so a device thread that already fetched a hook address can return safely during plugin unload. As a result, the DLL/SO cannot be replaced while OpenRGB is running. This implementation depends on the plugin API/ABI matching the OpenRGB host, so builds for different OpenRGB versions must not be mixed. OpenRGB's raw color-pointer writes are not protected by the core lock; if another plugin writes that pointer while a driver is sending, no final-send-only hook can provide strict cross-plugin frame atomicity.
-
 # 🛠️ Download
 ## OpenRGB 0.9+ Pipeline/Next (Plugin API Version 5)
 - [Windows 64](https://github.com/qiangqiang101/OpenRGBPixelScreenPlugin/releases)
