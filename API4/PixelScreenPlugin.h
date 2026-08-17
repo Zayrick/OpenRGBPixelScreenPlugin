@@ -23,7 +23,6 @@
 #include "OpenRGBPluginInterface.h"
 #include "RGBController.h"
 #include "LogManager.h"
-#include "HardwareSensorManager.h"
 #include "../common/DeviceUpdateVTableHook.h"
 
 // Font structure representing a character's LED matrix layout
@@ -38,14 +37,11 @@ struct Glyph
 struct MatrixZoneTarget
 {
     RGBController* controller;
-    unsigned int zone_idx;
     unsigned int start_idx;
     unsigned int matrix_width;
     unsigned int matrix_height;
     std::vector<unsigned int> matrix_map;
-    std::string controller_name;
-    std::string zone_name;
-    std::string display_name; // "ControllerName: ZoneName"
+    std::string display_name;
 };
 
 // Per-device matrix settings structure
@@ -83,22 +79,12 @@ struct MatrixTextSettings
 
     DeviceMatrixSettings& GetForDevice(const std::string& display_name)
     {
-        auto it = device_settings.find(display_name);
-        if (it == device_settings.end())
-        {
-            DeviceMatrixSettings default_s;
-            device_settings[display_name] = default_s;
-        }
         return device_settings[display_name];
-    }
-
-    bool HasDevice(const std::string& display_name) const
-    {
-        return device_settings.find(display_name) != device_settings.end();
     }
 };
 
 class PixelScreenTab;
+class HardwareSensorManager;
 
 using PixelScreenDeviceUpdateHook = pixelscreen::DeviceUpdateVTableHook<RGBController, 39, 40, 41>;
 
@@ -132,23 +118,25 @@ public:
     void                        ResourceManagerUpdated(unsigned int update_reason);
     void                        SettingsManagerUpdated(unsigned int update_reason);
 
-    /*-----------------------------------------------------*\
-    | Font Loading and Text Rendering                       |
-    \*-----------------------------------------------------*/
-    void                        LoadFonts();
-    void                        LoadSettings();
-    void                        SaveSettings();
-    
-    std::vector<MatrixZoneTarget> GetMatrixZones();
-    static void                 OnDeviceListChanged(void* arg);
-    HardwareSensorManager*      sensor_manager = nullptr;
-    QTimer*                     sensor_timer   = nullptr;
+    DeviceMatrixSettings        GetDeviceSettings(const std::string& display_name);
+    std::vector<std::string>    GetMatrixZoneNames();
+    HardwareSensorManager*      GetSensorManager() const noexcept { return sensor_manager; }
+    void                        SetSensorUpdateInterval(int interval);
+
+    template<typename Update>
+    void UpdateDeviceSettings(const std::string& display_name, Update update)
+    {
+        {
+            std::lock_guard<std::mutex> lock(settings_mutex);
+            update(settings.GetForDevice(display_name));
+        }
+        SaveSettings();
+    }
 
 public slots:
     void                        UpdateControllers();
 
 private slots:
-    void                        OnSensorDataUpdated();
     void                        OnSensorTimerTimeout();
 
 public:
@@ -156,20 +144,19 @@ public:
     | Plugin Global Variables                               |
     \*-----------------------------------------------------*/
     static ResourceManagerInterface*   api;
-    static PixelScreenPlugin*          plugin_instance;
-    MatrixTextSettings                  settings;
-    std::recursive_mutex               settings_mutex;
-    std::vector<MatrixZoneTarget>       matrix_zones;
-    std::shared_mutex                   matrix_zones_mutex;
 
 private:
     /*-----------------------------------------------------*\
     | User interface widget                                 |
     \*-----------------------------------------------------*/
     PixelScreenTab*                    ui = nullptr;
+    HardwareSensorManager*             sensor_manager = nullptr;
+    QTimer*                            sensor_timer = nullptr;
+    MatrixTextSettings                 settings;
+    std::mutex                         settings_mutex;
+    std::vector<MatrixZoneTarget>      matrix_zones;
+    std::shared_mutex                  matrix_zones_mutex;
     std::vector<RGBController*>        hooked_controllers;
-    std::string                         sensor_resolved_text;
-    QMutex                              sensor_text_mutex;
     
     // Font databases loaded from JSON
     std::map<char, Glyph>               small_letters;
@@ -180,11 +167,11 @@ private:
     std::map<char, Glyph>               large_digits;
     std::map<std::string, Glyph>        zh_font;
 
-    // Scrolling states
-    float                               scroll_offset = 0.0f;
-    int                                 ping_pong_direction = -1;
+    void                                LoadFonts();
+    void                                LoadSettings();
+    void                                SaveSettings();
+    static void                         OnDeviceListChanged(void* arg);
 
-    // Helper functions for rendering
     std::vector<std::string>            SplitUTF8(const std::string& str);
     int                                 GetSpacing(const std::string& ch, const std::string& font_size, bool time);
     Glyph                               GetGlyph(const std::string& ch, const std::string& font_size, bool time);
@@ -208,9 +195,9 @@ private:
 #undef  LOG_FATAL
 #undef  LOG_ERROR
 #undef  LOG_WARNING
+#undef  LOG_WARN
 #undef  LOG_INFO
 #define LOG_INFO(...)    qDebug(__VA_ARGS__)
-#define LOG_WARN(...)   LOG_WARNING(__VA_ARGS__)
 #define LOG_ERROR(...)   qCritical(__VA_ARGS__)
 #define LOG_WARNING(...) qWarning(__VA_ARGS__)
-#define LOG_WARN(...)   LOG_WARNING(__VA_ARGS__)
+#define LOG_WARN(...)    LOG_WARNING(__VA_ARGS__)

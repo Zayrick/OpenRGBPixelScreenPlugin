@@ -18,8 +18,6 @@ MAJOR       = 0
 MINOR       = 9
 SUFFIX      = git
 
-SHORTHASH   = $$system("git rev-parse --short=7 HEAD")
-LASTTAG     = "release_"$$MAJOR"."$$MINOR
 COMMITS     = $$system("git rev-list --count HEAD")
 
 VERSION_NUM = $$MAJOR"."$$MINOR"."$$COMMITS
@@ -33,8 +31,6 @@ equals(SUFFIX, "git") {
 win32:BUILDDATE = $$system(date /t)
 unix:BUILDDATE  = $$system(date -R)
 GIT_COMMIT_ID   = $$system(git rev-parse HEAD)
-GIT_COMMIT_DATE = $$system(git show -s --format=%ci HEAD)
-GIT_BRANCH      = $$system(git rev-parse --abbrev-ref HEAD)
 
 # OpenRGB Plugin API version
 API_VERSION = 4
@@ -48,8 +44,6 @@ DEFINES +=                                                                      
     VERSION_STRING=\\"\"\"$$VERSION_STR\\"\"\"                                                  \
     BUILDDATE_STRING=\\"\"\"$$BUILDDATE\\"\"\"                                                  \
     GIT_COMMIT_ID=\\"\"\"$$GIT_COMMIT_ID\\"\"\"                                                 \
-    GIT_COMMIT_DATE=\\"\"\"$$GIT_COMMIT_DATE\\"\"\"                                             \
-    GIT_BRANCH=\\"\"\"$$GIT_BRANCH\\"\"\"                                                       \
     PROJECT_DESC=\\"\"\"$$PROJECT_DESC\\"\"\"                                                   \
     PROJECT_NAME=\\"\"\"$$PROJECT_NAME\\"\"\"                                                   \
     PROJECT_URL=\\"\"\"$$PROJECT_URL\\"\"\"                                                     \
@@ -105,6 +99,7 @@ FORMS +=                                                                        
 
 # Platform configurations
 CONFIG += c++17
+win32-msvc*:QMAKE_CXXFLAGS += -utf-8
 
 CONFIG(debug, debug|release) {
     DESTDIR = debug

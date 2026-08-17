@@ -13,16 +13,11 @@
 #include <QWidget>
 #include <QCheckBox>
 #include <QComboBox>
-#include <QLineEdit>
 #include <QTextEdit>
 #include <QSlider>
 #include <QSpinBox>
 #include <QPushButton>
 #include <QLabel>
-#include <QFormLayout>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QGroupBox>
 #include <QRadioButton>
 #include <QButtonGroup>
 #include "PixelScreenPlugin.h"

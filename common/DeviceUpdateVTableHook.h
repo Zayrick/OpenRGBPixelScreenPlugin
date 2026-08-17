@@ -41,13 +41,6 @@
 namespace pixelscreen
 {
 
-enum class DeviceUpdateCallKind
-{
-    AllLEDs,
-    ZoneLEDs,
-    SingleLED
-};
-
 /*---------------------------------------------------------*\
 | Hooks the three final RGBController device-output virtuals|
 | without changing the controller object or OpenRGB itself. |
@@ -78,16 +71,6 @@ public:
     class OriginalCall
     {
     public:
-        DeviceUpdateCallKind Kind() const noexcept
-        {
-            return kind_;
-        }
-
-        int Argument() const noexcept
-        {
-            return argument_;
-        }
-
         void Invoke(Controller* controller) const
         {
             if (!controller || !function_)
@@ -95,7 +78,7 @@ public:
                 return;
             }
 
-            if (kind_ == DeviceUpdateCallKind::AllLEDs)
+            if (method_index_ == 0)
             {
                 NoArgumentFunction function;
                 std::memcpy(&function, &function_, sizeof(function));
@@ -112,32 +95,23 @@ public:
     private:
         friend class DeviceUpdateVTableHook;
 
-        OriginalCall(DeviceUpdateCallKind kind, void* function, int argument) noexcept
-            : kind_(kind), function_(function), argument_(argument)
+        OriginalCall(std::size_t method_index, void* function, int argument) noexcept
+            : method_index_(method_index), function_(function), argument_(argument)
         {
         }
 
-        DeviceUpdateCallKind kind_;
-        void*                function_;
-        int                  argument_;
+        std::size_t method_index_;
+        void*       function_;
+        int         argument_;
     };
 
     using AroundCallback = void (*)(void* callback_arg,
                                     Controller* controller,
                                     const OriginalCall& original_call);
 
-    static bool IsSupported() noexcept
-    {
-#if defined(_WIN32) || defined(__linux__)
-        return true;
-#else
-        return false;
-#endif
-    }
-
     static bool Install(Controller* controller, void* callback_arg, AroundCallback callback)
     {
-        if (!IsSupported() || !controller || !callback || !EnsureModulePinned())
+        if (!controller || !callback || !EnsureModulePinned())
         {
             return false;
         }
@@ -154,11 +128,10 @@ public:
             return false;
         }
 
-        auto context       = std::make_shared<HookContext>();
-        context->controller = controller;
+        auto context          = std::make_shared<HookContext>();
         context->callback_arg = callback_arg;
-        context->callback  = callback;
-        context->vtable    = vtable;
+        context->callback     = callback;
+        context->vtable       = vtable;
 
         std::lock_guard<std::mutex> lock(registry_mutex_);
 
@@ -180,9 +153,9 @@ public:
             /* Validate the complete slot set before making the first write.
              * This rejects API5 objects that only implement the public
              * interface and do not carry RGBController's private tail. */
-            for (std::size_t method_index = 0; method_index < Slots().size(); ++method_index)
+            for (std::size_t method_index = 0; method_index < method_slots_.size(); ++method_index)
             {
-                void** slot_address = vtable + Slots()[method_index];
+                void** slot_address = vtable + method_slots_[method_index];
                 if (!IsReadableAddress(slot_address))
                 {
                     return false;
@@ -210,7 +183,7 @@ public:
                 }
             }
 
-            for (std::size_t method_index = 0; method_index < Slots().size(); ++method_index)
+            for (std::size_t method_index = 0; method_index < method_slots_.size(); ++method_index)
             {
                 void* const hook_address = HookAddress(method_index);
                 void* const current      = current_functions[method_index];
@@ -220,7 +193,7 @@ public:
                 }
 
                 patch.originals[method_index] = current;
-                if (!ReplacePointer(vtable + Slots()[method_index], current, hook_address))
+                if (!ReplacePointer(vtable + method_slots_[method_index], current, hook_address))
                 {
                     RollBackPatch(patch, changed);
                     return false;
@@ -234,9 +207,9 @@ public:
             /* All registered objects sharing a vtable must see the same
              * chain.  Refuse a partial installation if another component
              * replaced one of our live entries without chaining it. */
-            for (std::size_t method_index = 0; method_index < Slots().size(); ++method_index)
+            for (std::size_t method_index = 0; method_index < method_slots_.size(); ++method_index)
             {
-                void** slot_address = vtable + Slots()[method_index];
+                void** slot_address = vtable + method_slots_[method_index];
                 if (!IsReadableAddress(slot_address) || *slot_address != HookAddress(method_index))
                 {
                     return false;
@@ -280,7 +253,7 @@ private:
             {
                 const std::shared_ptr<HookContext>& context = iterator->second;
                 if (context->callback_arg != callback_arg
-                    || (controller_filter && context->controller != controller_filter))
+                    || (controller_filter && iterator->first != controller_filter))
                 {
                     ++iterator;
                     continue;
@@ -310,9 +283,9 @@ private:
                     continue;
                 }
 
-                for (std::size_t method_index = 0; method_index < Slots().size(); ++method_index)
+                for (std::size_t method_index = 0; method_index < method_slots_.size(); ++method_index)
                 {
-                    void** slot_address = patch.vtable + Slots()[method_index];
+                    void** slot_address = patch.vtable + method_slots_[method_index];
                     if (!patch.originals[method_index] || !IsReadableAddress(slot_address))
                     {
                         continue;
@@ -339,7 +312,6 @@ private:
 
     struct HookContext
     {
-        Controller*               controller = nullptr;
         void*                     callback_arg = nullptr;
         AroundCallback            callback = nullptr;
         void**                    vtable = nullptr;
@@ -374,7 +346,6 @@ private:
 
             if (context_->active_calls.fetch_sub(1, std::memory_order_acq_rel) == 1)
             {
-                std::lock_guard<std::mutex> lock(context_->idle_mutex);
                 context_->idle_condition.notify_all();
             }
         }
@@ -404,16 +375,6 @@ private:
         Controller* controller_;
     };
 
-    static const std::array<std::size_t, 3>& Slots() noexcept
-    {
-        static const std::array<std::size_t, 3> method_slots = {{
-            DeviceUpdateLEDsSlot,
-            DeviceUpdateZoneLEDsSlot,
-            DeviceUpdateSingleLEDSlot
-        }};
-        return method_slots;
-    }
-
     template<typename Function>
     static void* FunctionAddress(Function function) noexcept
     {
@@ -438,14 +399,14 @@ private:
 
     static void RollBackPatch(VTablePatch& patch, const std::array<bool, 3>& changed)
     {
-        for (std::size_t method_index = 0; method_index < Slots().size(); ++method_index)
+        for (std::size_t method_index = 0; method_index < method_slots_.size(); ++method_index)
         {
             if (!changed[method_index] || !patch.originals[method_index])
             {
                 continue;
             }
 
-            void** slot_address = patch.vtable + Slots()[method_index];
+            void** slot_address = patch.vtable + method_slots_[method_index];
             if (IsReadableAddress(slot_address) && *slot_address == HookAddress(method_index))
             {
                 ReplacePointer(slot_address, HookAddress(method_index), patch.originals[method_index]);
@@ -459,7 +420,7 @@ private:
             != active_controllers_.end();
     }
 
-    static void Dispatch(Controller* controller, DeviceUpdateCallKind kind, int argument)
+    static void Dispatch(Controller* controller, std::size_t method_index, int argument)
     {
         if (!controller)
         {
@@ -475,7 +436,7 @@ private:
             auto patch_iterator = vtable_patches_.find(vtable);
             if (patch_iterator != vtable_patches_.end())
             {
-                original = patch_iterator->second.originals[MethodIndex(kind)];
+                original = patch_iterator->second.originals[method_index];
             }
 
             auto context_iterator = controller_hooks_.find(controller);
@@ -490,7 +451,7 @@ private:
         {
             if (original)
             {
-                OriginalCall(kind, original, argument).Invoke(controller);
+                OriginalCall(method_index, original, argument).Invoke(controller);
             }
             return;
         }
@@ -501,7 +462,7 @@ private:
             return;
         }
 
-        OriginalCall original_call(kind, original, argument);
+        OriginalCall original_call(method_index, original, argument);
 
         if (!context->enabled.load(std::memory_order_acquire) || IsReentrant(controller))
         {
@@ -520,48 +481,35 @@ private:
         context->callback(context->callback_arg, controller, original_call);
     }
 
-    static std::size_t MethodIndex(DeviceUpdateCallKind kind) noexcept
-    {
-        switch (kind)
-        {
-        case DeviceUpdateCallKind::AllLEDs:
-            return 0;
-        case DeviceUpdateCallKind::ZoneLEDs:
-            return 1;
-        default:
-            return 2;
-        }
-    }
-
 #if defined(_WIN32) && defined(_M_IX86)
     static void __fastcall HookAllLEDs(Controller* controller, void*)
     {
-        Dispatch(controller, DeviceUpdateCallKind::AllLEDs, -1);
+        Dispatch(controller, 0, -1);
     }
 
     static void __fastcall HookZoneLEDs(Controller* controller, void*, int zone)
     {
-        Dispatch(controller, DeviceUpdateCallKind::ZoneLEDs, zone);
+        Dispatch(controller, 1, zone);
     }
 
     static void __fastcall HookSingleLED(Controller* controller, void*, int led)
     {
-        Dispatch(controller, DeviceUpdateCallKind::SingleLED, led);
+        Dispatch(controller, 2, led);
     }
 #else
     static void HookAllLEDs(Controller* controller)
     {
-        Dispatch(controller, DeviceUpdateCallKind::AllLEDs, -1);
+        Dispatch(controller, 0, -1);
     }
 
     static void HookZoneLEDs(Controller* controller, int zone)
     {
-        Dispatch(controller, DeviceUpdateCallKind::ZoneLEDs, zone);
+        Dispatch(controller, 1, zone);
     }
 
     static void HookSingleLED(Controller* controller, int led)
     {
-        Dispatch(controller, DeviceUpdateCallKind::SingleLED, led);
+        Dispatch(controller, 2, led);
     }
 #endif
 
@@ -738,6 +686,11 @@ private:
 #endif
 
     inline static std::mutex registry_mutex_;
+    inline static constexpr std::array<std::size_t, 3> method_slots_ = {{
+        DeviceUpdateLEDsSlot,
+        DeviceUpdateZoneLEDsSlot,
+        DeviceUpdateSingleLEDSlot
+    }};
     inline static std::unordered_map<Controller*, std::shared_ptr<HookContext>> controller_hooks_;
     inline static std::unordered_map<void**, VTablePatch> vtable_patches_;
     inline static thread_local std::vector<Controller*> active_controllers_;

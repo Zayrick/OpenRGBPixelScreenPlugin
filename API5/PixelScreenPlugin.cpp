@@ -9,12 +9,12 @@
 | \*---------------------------------------------------------*/
 
 #include "PixelScreenPlugin.h"
+#include "HardwareSensorManager.h"
 #include "PixelScreenTab.h"
 #include <QFile>
 #include <QDateTime>
 #include <QTime>
 #include <QDir>
-#include <QThread>
 #include <QMetaObject>
 #include <fstream>
 #include <cmath>
@@ -22,7 +22,6 @@
 
 #include <algorithm>
 OpenRGBPluginAPIInterface* PixelScreenPlugin::api = nullptr;
-PixelScreenPlugin* PixelScreenPlugin::plugin_instance = nullptr;
 
 PixelScreenPlugin::~PixelScreenPlugin()
 {
@@ -60,7 +59,6 @@ unsigned int PixelScreenPlugin::GetPluginAPIVersion()
 \*---------------------------------------------------------*/
 void PixelScreenPlugin::Load(OpenRGBPluginAPIInterface* api_interface_ptr)
 {
-    plugin_instance = this;
     api = api_interface_ptr;
 
     LOG_INFO("[PixelScreenPlugin] Loading version %s (%s), build date %s\n", VERSION_STRING, GIT_COMMIT_ID, BUILDDATE_STRING);
@@ -75,8 +73,6 @@ void PixelScreenPlugin::Load(OpenRGBPluginAPIInterface* api_interface_ptr)
     // Initialize hardware sensor manager BEFORE creating UI so
     // DeviceSettingsPage constructors can connect to its signals
     sensor_manager = new HardwareSensorManager(this);
-    connect(sensor_manager, &HardwareSensorManager::sensorDataUpdated,
-            this, &PixelScreenPlugin::OnSensorDataUpdated);
     sensor_timer = new QTimer(this);
     sensor_timer->setInterval(1000);
     connect(sensor_timer, &QTimer::timeout, this, &PixelScreenPlugin::OnSensorTimerTimeout);
@@ -123,7 +119,6 @@ void PixelScreenPlugin::Unload()
 
     SaveSettings();
 
-    plugin_instance = nullptr;
 }
 
 
@@ -192,15 +187,12 @@ void PixelScreenPlugin::UpdateControllers()
 
                 MatrixZoneTarget target;
                 target.controller = controller;
-                target.zone_idx = zone_idx;
                 target.start_idx = controller->GetZoneStartIndex(zone_idx);
                 target.matrix_width = matrix_width;
                 target.matrix_height = matrix_height;
                 target.matrix_map.assign(matrix_data,
                                          matrix_data + static_cast<std::size_t>(matrix_width) * matrix_height);
-                target.controller_name = controller->GetName();
-                target.zone_name = controller->GetZoneName(zone_idx);
-                target.display_name = target.controller_name + " - " + target.zone_name;
+                target.display_name = controller->GetName() + " - " + controller->GetZoneName(zone_idx);
                 
                 new_matrix_zones.push_back(std::move(target));
                 has_matrix_zone = true;
@@ -213,11 +205,12 @@ void PixelScreenPlugin::UpdateControllers()
         }
     }
 
+    std::vector<RGBControllerInterface*> installed_controllers;
+    std::vector<RGBControllerInterface*> old_controllers;
     {
         std::unique_lock<std::shared_mutex> lock(matrix_zones_mutex);
         matrix_zones.swap(new_matrix_zones);
 
-        std::vector<RGBControllerInterface*> installed_controllers;
         installed_controllers.reserve(controllers_to_hook.size());
         for (RGBControllerInterface* controller : controllers_to_hook)
         {
@@ -231,24 +224,48 @@ void PixelScreenPlugin::UpdateControllers()
             }
         }
 
-        std::vector<RGBControllerInterface*> old_controllers;
         old_controllers.swap(hooked_controllers);
         hooked_controllers = installed_controllers;
-        lock.unlock();
+    }
 
-        for (RGBControllerInterface* old_controller : old_controllers)
+    for (RGBControllerInterface* old_controller : old_controllers)
+    {
+        if (std::find(installed_controllers.begin(), installed_controllers.end(), old_controller)
+            == installed_controllers.end())
         {
-            if (std::find(installed_controllers.begin(), installed_controllers.end(), old_controller)
-                == installed_controllers.end())
-            {
-                PixelScreenDeviceUpdateHook::UninstallController(old_controller, this);
-            }
+            PixelScreenDeviceUpdateHook::UninstallController(old_controller, this);
         }
     }
 
     if (ui)
     {
         QMetaObject::invokeMethod(ui, "UpdateDeviceList", Qt::QueuedConnection);
+    }
+}
+
+DeviceMatrixSettings PixelScreenPlugin::GetDeviceSettings(const std::string& display_name)
+{
+    std::lock_guard<std::mutex> lock(settings_mutex);
+    return settings.GetForDevice(display_name);
+}
+
+std::vector<std::string> PixelScreenPlugin::GetMatrixZoneNames()
+{
+    std::shared_lock<std::shared_mutex> lock(matrix_zones_mutex);
+    std::vector<std::string> names;
+    names.reserve(matrix_zones.size());
+    for (const MatrixZoneTarget& target : matrix_zones)
+    {
+        names.push_back(target.display_name);
+    }
+    return names;
+}
+
+void PixelScreenPlugin::SetSensorUpdateInterval(int interval)
+{
+    if (sensor_timer)
+    {
+        sensor_timer->setInterval(interval);
     }
 }
 
@@ -287,8 +304,8 @@ void PixelScreenPlugin::LoadFonts()
                     }
                     if (!g.grid.empty())
                     {
-                        g.height = g.grid.size();
-                        g.width = g.grid[0].size();
+                        g.height = static_cast<unsigned int>(g.grid.size());
+                        g.width = static_cast<unsigned int>(g.grid[0].size());
                     }
                     font_map[c] = g;
                 }
@@ -341,8 +358,8 @@ void PixelScreenPlugin::LoadFonts()
                 }
                 if (!g.grid.empty())
                 {
-                    g.height = g.grid.size();
-                    g.width = g.grid[0].size();
+                    g.height = static_cast<unsigned int>(g.grid.size());
+                    g.width = static_cast<unsigned int>(g.grid[0].size());
                 }
                 zh_font[key] = g;
             }
@@ -362,7 +379,7 @@ void PixelScreenPlugin::LoadFonts()
 
 void PixelScreenPlugin::LoadSettings()
 {
-    std::lock_guard<std::recursive_mutex> settings_lock(settings_mutex);
+    std::lock_guard<std::mutex> settings_lock(settings_mutex);
 
     std::string settings_path = (api->GetConfigurationDirectory() / "plugins" / "settings" / "PixelScreenSettings.json").string();
     QFile file(QString::fromStdString(settings_path));
@@ -415,7 +432,7 @@ void PixelScreenPlugin::LoadSettings()
 
 void PixelScreenPlugin::SaveSettings()
 {
-    std::lock_guard<std::recursive_mutex> settings_lock(settings_mutex);
+    std::lock_guard<std::mutex> settings_lock(settings_mutex);
 
     // Create folders if they do not exist
     std::string settings_dir = (api->GetConfigurationDirectory() / "plugins" / "settings").string();
@@ -706,19 +723,13 @@ std::string PixelScreenPlugin::FormatDateTime(const std::string& format)
     return str;
 }
 
-void PixelScreenPlugin::OnSensorDataUpdated()
-{
-    // Sensor cache is updated inside HardwareSensorManager.
-    // resolveFormat() is called for each hardware-send event.
-}
-
 void PixelScreenPlugin::OnSensorTimerTimeout()
 {
     if (!sensor_manager) return;
 
     // Only run curl/fetchSensors if at least one enabled device is set to "Sensor Data" mode (display_mode == 4)
     {
-        std::lock_guard<std::recursive_mutex> settings_lock(settings_mutex);
+        std::lock_guard<std::mutex> settings_lock(settings_mutex);
         bool sensor_mode_enabled = false;
         for (const auto& pair : settings.device_settings)
         {
@@ -787,7 +798,7 @@ void PixelScreenPlugin::OnDeviceUpdateHook(
     const PixelScreenDeviceUpdateHook::OriginalCall& original_call)
 {
     PixelScreenPlugin* plugin = static_cast<PixelScreenPlugin*>(callback_arg);
-    if (!plugin || plugin != plugin_instance)
+    if (!plugin)
     {
         original_call.Invoke(controller);
         return;
@@ -805,7 +816,7 @@ void PixelScreenPlugin::SendOverlayFrame(
         return;
     }
 
-    std::unique_lock<std::recursive_mutex> settings_lock(settings_mutex);
+    std::unique_lock<std::mutex> settings_lock(settings_mutex);
     std::shared_lock<std::shared_mutex> zones_lock(matrix_zones_mutex);
 
     bool has_enabled_zone = false;
@@ -939,7 +950,7 @@ void PixelScreenPlugin::OverlayTextOnBuffer(const MatrixZoneTarget& target,
             if (art_j.is_array() && !art_j.empty())
             {
                 Glyph custom_glyph;
-                custom_glyph.height = art_j.size();
+                custom_glyph.height = static_cast<unsigned int>(art_j.size());
                 custom_glyph.width = 0;
                 custom_glyph.grid.resize(custom_glyph.height);
 
@@ -949,7 +960,7 @@ void PixelScreenPlugin::OverlayTextOnBuffer(const MatrixZoneTarget& target,
                     {
                         if (art_j[r].size() > custom_glyph.width)
                         {
-                            custom_glyph.width = art_j[r].size();
+                            custom_glyph.width = static_cast<unsigned int>(art_j[r].size());
                         }
                         custom_glyph.grid[r].resize(art_j[r].size());
                         for (size_t c = 0; c < art_j[r].size(); c++)
