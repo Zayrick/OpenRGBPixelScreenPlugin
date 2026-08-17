@@ -31,11 +31,9 @@ void PixelScreenTab::UpdateDeviceList()
 {
     ui->deviceTabWidget->clear();
 
-    std::shared_lock<std::shared_mutex> lock(plugin->matrix_zones_mutex);
-
-    for (const auto& target : plugin->matrix_zones)
+    for (const std::string& display_name : plugin->GetMatrixZoneNames())
     {
-        DeviceSettingsPage *page = new DeviceSettingsPage(plugin, target.display_name, this);
-        ui->deviceTabWidget->addTab(page, QString::fromStdString(target.display_name));
+        DeviceSettingsPage *page = new DeviceSettingsPage(plugin, display_name, this);
+        ui->deviceTabWidget->addTab(page, QString::fromStdString(display_name));
     }
 }

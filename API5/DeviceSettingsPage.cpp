@@ -9,8 +9,13 @@
 \*---------------------------------------------------------*/
 
 #include "DeviceSettingsPage.h"
+#include "HardwareSensorManager.h"
 #include <QColorDialog>
 #include <QColor>
+#include <QFormLayout>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGroupBox>
 
 DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std::string& dev_name, QWidget *parent)
     : QWidget(parent), plugin(plugin_ptr), device_name(dev_name)
@@ -179,7 +184,10 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     mainLayout->addStretch(1);
 
     // Signal connections
-    connect(enabledCheck, &QCheckBox::stateChanged, this, &DeviceSettingsPage::on_enabledCheck_stateChanged);
+    connect(enabledCheck, &QCheckBox::checkStateChanged, this, [this](Qt::CheckState state)
+    {
+        on_enabledCheck_stateChanged(static_cast<int>(state));
+    });
     connect(displayModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &DeviceSettingsPage::on_displayModeCombo_currentIndexChanged);
     connect(fontSizeCombo, &QComboBox::currentTextChanged, this, &DeviceSettingsPage::on_fontSizeCombo_currentTextChanged);
     connect(customTextEdit, &QTextEdit::textChanged, this, &DeviceSettingsPage::on_customTextEdit_textChanged);
@@ -199,15 +207,18 @@ DeviceSettingsPage::DeviceSettingsPage(PixelScreenPlugin* plugin_ptr, const std:
     connect(scrollSpeedSlider, &QSlider::valueChanged, this, &DeviceSettingsPage::on_scrollSpeedSlider_valueChanged);
     connect(textColorButton, &QPushButton::clicked, this, &DeviceSettingsPage::on_textColorButton_clicked);
     connect(fpsSlider, &QSlider::valueChanged, this, &DeviceSettingsPage::on_fpsSlider_valueChanged);
-    connect(invertColorCheck, &QCheckBox::stateChanged, this, &DeviceSettingsPage::on_invertColorCheck_stateChanged);
+    connect(invertColorCheck, &QCheckBox::checkStateChanged, this, [this](Qt::CheckState state)
+    {
+        on_invertColorCheck_stateChanged(static_cast<int>(state));
+    });
     connect(paddingXSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, &DeviceSettingsPage::on_paddingXSpin_valueChanged);
     connect(paddingYSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, &DeviceSettingsPage::on_paddingYSpin_valueChanged);
 
     // Connect to sensor manager signals
-    if (plugin->sensor_manager)
+    if (HardwareSensorManager* sensor_manager = plugin->GetSensorManager())
     {
-        connect(plugin->sensor_manager, &HardwareSensorManager::sensorDataUpdated, this, &DeviceSettingsPage::on_sensorDataUpdated);
-        connect(plugin->sensor_manager, &HardwareSensorManager::sensorFetchError, this, [this](const QString& err){
+        connect(sensor_manager, &HardwareSensorManager::sensorDataUpdated, this, &DeviceSettingsPage::on_sensorDataUpdated);
+        connect(sensor_manager, &HardwareSensorManager::sensorFetchError, this, [this](const QString& err){
             manual_refresh_requested = false;
             sensorStatusLabel->setText("Error: " + err);
             sensorStatusLabel->setStyleSheet("color: red; font-style: italic;");
@@ -221,7 +232,7 @@ void DeviceSettingsPage::LoadSettingsToPage()
 {
     loading_ui = true;
 
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
+    const DeviceMatrixSettings dev_s = plugin->GetDeviceSettings(device_name);
 
     enabledCheck->setChecked(dev_s.enabled);
 
@@ -299,21 +310,23 @@ void DeviceSettingsPage::UpdateColorButton(QPushButton* button, unsigned char r,
 void DeviceSettingsPage::on_enabledCheck_stateChanged(int state)
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.enabled = (state == Qt::Checked);
-    plugin->SaveSettings();
+    plugin->UpdateDeviceSettings(device_name, [state](DeviceMatrixSettings& settings)
+    {
+        settings.enabled = (state == Qt::Checked);
+    });
 }
 
 void DeviceSettingsPage::on_displayModeCombo_currentIndexChanged(int index)
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-
     // Combo: 0=Time, 1=Custom, 2=PixelArt, 3=Sensor
     // Internal: 0=Time, 1=Custom, 3=PixelArt, 4=Sensor
-    if (index == 2) dev_s.display_mode = 3;
-    else if (index == 3) dev_s.display_mode = 4;
-    else dev_s.display_mode = index;
+    plugin->UpdateDeviceSettings(device_name, [index](DeviceMatrixSettings& settings)
+    {
+        if (index == 2) settings.display_mode = 3;
+        else if (index == 3) settings.display_mode = 4;
+        else settings.display_mode = index;
+    });
 
     bool is_sensor = (index == 3);
     bool is_art    = (index == 2);
@@ -323,55 +336,63 @@ void DeviceSettingsPage::on_displayModeCombo_currentIndexChanged(int index)
     pixelArtEdit->setEnabled(is_art);
     UpdateSensorUI(is_sensor);
 
-    plugin->SaveSettings();
 }
 
 void DeviceSettingsPage::on_fontSizeCombo_currentTextChanged(const QString &text)
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.font_size = text.toStdString();
-    plugin->SaveSettings();
+    const std::string font_size = text.toStdString();
+    plugin->UpdateDeviceSettings(device_name, [font_size](DeviceMatrixSettings& settings)
+    {
+        settings.font_size = font_size;
+    });
 }
 
 void DeviceSettingsPage::on_customTextEdit_textChanged()
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.custom_text = customTextEdit->toPlainText().toStdString();
-    plugin->SaveSettings();
+    const std::string text = customTextEdit->toPlainText().toStdString();
+    plugin->UpdateDeviceSettings(device_name, [text](DeviceMatrixSettings& settings)
+    {
+        settings.custom_text = text;
+    });
 }
 
 void DeviceSettingsPage::on_timeFormatEdit_textChanged()
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.time_format = timeFormatEdit->toPlainText().toStdString();
-    plugin->SaveSettings();
+    const std::string format = timeFormatEdit->toPlainText().toStdString();
+    plugin->UpdateDeviceSettings(device_name, [format](DeviceMatrixSettings& settings)
+    {
+        settings.time_format = format;
+    });
 }
 
 void DeviceSettingsPage::on_sensorFormatEdit_textChanged()
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.sensor_format = sensorFormatEdit->toPlainText().toStdString();
-    plugin->SaveSettings();
+    const std::string format = sensorFormatEdit->toPlainText().toStdString();
+    plugin->UpdateDeviceSettings(device_name, [format](DeviceMatrixSettings& settings)
+    {
+        settings.sensor_format = format;
+    });
 }
 
 void DeviceSettingsPage::on_sensorIntervalRadio_toggled()
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    if (sensorInterval250Radio->isChecked())       dev_s.sensor_update_interval = 250;
-    else if (sensorInterval500Radio->isChecked())  dev_s.sensor_update_interval = 500;
-    else if (sensorInterval1000Radio->isChecked()) dev_s.sensor_update_interval = 1000;
-    else                                           dev_s.sensor_update_interval = 2000;
-    // Restart the sensor timer
-    if (plugin->sensor_timer)
+    const QRadioButton* changed_button = qobject_cast<QRadioButton*>(sender());
+    if (changed_button && !changed_button->isChecked()) return;
+
+    int interval = 2000;
+    if (sensorInterval250Radio->isChecked())       interval = 250;
+    else if (sensorInterval500Radio->isChecked())  interval = 500;
+    else if (sensorInterval1000Radio->isChecked()) interval = 1000;
+    plugin->UpdateDeviceSettings(device_name, [interval](DeviceMatrixSettings& settings)
     {
-        plugin->sensor_timer->setInterval(dev_s.sensor_update_interval);
-    }
-    plugin->SaveSettings();
+        settings.sensor_update_interval = interval;
+    });
+    plugin->SetSensorUpdateInterval(interval);
 }
 
 void DeviceSettingsPage::on_sensorRefreshButton_clicked()
@@ -379,8 +400,8 @@ void DeviceSettingsPage::on_sensorRefreshButton_clicked()
     manual_refresh_requested = true;
     sensorStatusLabel->setText("Refreshing...");
     sensorStatusLabel->setStyleSheet("color: gray; font-style: italic;");
-    if (plugin->sensor_manager)
-        plugin->sensor_manager->fetchSensors();
+    if (HardwareSensorManager* sensor_manager = plugin->GetSensorManager())
+        sensor_manager->fetchSensors();
 }
 
 void DeviceSettingsPage::on_sensorAddButton_clicked()
@@ -400,9 +421,10 @@ void DeviceSettingsPage::on_sensorAddButton_clicked()
 
 void DeviceSettingsPage::on_sensorDataUpdated()
 {
-    if (!plugin->sensor_manager) return;
+    HardwareSensorManager* sensor_manager = plugin->GetSensorManager();
+    if (!sensor_manager) return;
 
-    auto sensors = plugin->sensor_manager->getSensorList();
+    auto sensors = sensor_manager->getSensorList();
 
     bool unpopulated = (sensorComboBox->count() <= 1 && (sensorComboBox->count() == 0 || sensorComboBox->itemText(0).startsWith("(")));
     if (!manual_refresh_requested && !unpopulated)
@@ -442,82 +464,99 @@ void DeviceSettingsPage::on_sensorDataUpdated()
 void DeviceSettingsPage::on_alignRadio_toggled()
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    if (alignStartRadio->isChecked()) dev_s.text_align = 0;
-    else if (alignCenterRadio->isChecked()) dev_s.text_align = 1;
-    else if (alignEndRadio->isChecked()) dev_s.text_align = 2;
-    plugin->SaveSettings();
+    const QRadioButton* changed_button = qobject_cast<QRadioButton*>(sender());
+    if (changed_button && !changed_button->isChecked()) return;
+
+    int alignment = 0;
+    if (alignCenterRadio->isChecked()) alignment = 1;
+    else if (alignEndRadio->isChecked()) alignment = 2;
+    plugin->UpdateDeviceSettings(device_name, [alignment](DeviceMatrixSettings& settings)
+    {
+        settings.text_align = alignment;
+    });
 }
 
 void DeviceSettingsPage::on_pixelArtEdit_textChanged()
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.pixel_art_json = pixelArtEdit->toPlainText().toStdString();
-    plugin->SaveSettings();
+    const std::string pixel_art = pixelArtEdit->toPlainText().toStdString();
+    plugin->UpdateDeviceSettings(device_name, [pixel_art](DeviceMatrixSettings& settings)
+    {
+        settings.pixel_art_json = pixel_art;
+    });
 }
 
 void DeviceSettingsPage::on_scrollDirCombo_currentTextChanged(const QString &text)
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.scroll_direction = text.toStdString();
-    plugin->SaveSettings();
+    const std::string direction = text.toStdString();
+    plugin->UpdateDeviceSettings(device_name, [direction](DeviceMatrixSettings& settings)
+    {
+        settings.scroll_direction = direction;
+    });
 }
 
 void DeviceSettingsPage::on_scrollSpeedSlider_valueChanged(int value)
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.scroll_speed = value;
+    plugin->UpdateDeviceSettings(device_name, [value](DeviceMatrixSettings& settings)
+    {
+        settings.scroll_speed = value;
+    });
     scrollSpeedValueLabel->setText(QString::number(value));
-    plugin->SaveSettings();
 }
 
 void DeviceSettingsPage::on_textColorButton_clicked()
 {
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    QColor current(dev_s.text_r, dev_s.text_g, dev_s.text_b);
+    const DeviceMatrixSettings settings = plugin->GetDeviceSettings(device_name);
+    const QColor current(settings.text_r, settings.text_g, settings.text_b);
+
     QColor selected = QColorDialog::getColor(current, this, "Select Text Color");
     if (selected.isValid())
     {
-        dev_s.text_r = selected.red();
-        dev_s.text_g = selected.green();
-        dev_s.text_b = selected.blue();
-        UpdateColorButton(textColorButton, dev_s.text_r, dev_s.text_g, dev_s.text_b);
-        plugin->SaveSettings();
+        plugin->UpdateDeviceSettings(device_name, [selected](DeviceMatrixSettings& settings)
+        {
+            settings.text_r = selected.red();
+            settings.text_g = selected.green();
+            settings.text_b = selected.blue();
+        });
+        UpdateColorButton(textColorButton, selected.red(), selected.green(), selected.blue());
     }
 }
 
 void DeviceSettingsPage::on_fpsSlider_valueChanged(int value)
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.fps = value;
+    plugin->UpdateDeviceSettings(device_name, [value](DeviceMatrixSettings& settings)
+    {
+        settings.fps = value;
+    });
     fpsValueLabel->setText(QString::number(value));
-    plugin->SaveSettings();
 }
 
 void DeviceSettingsPage::on_invertColorCheck_stateChanged(int state)
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.invert_color = (state == Qt::Checked);
-    plugin->SaveSettings();
+    plugin->UpdateDeviceSettings(device_name, [state](DeviceMatrixSettings& settings)
+    {
+        settings.invert_color = (state == Qt::Checked);
+    });
 }
 
 void DeviceSettingsPage::on_paddingXSpin_valueChanged(int value)
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.padding_x = value;
-    plugin->SaveSettings();
+    plugin->UpdateDeviceSettings(device_name, [value](DeviceMatrixSettings& settings)
+    {
+        settings.padding_x = value;
+    });
 }
 
 void DeviceSettingsPage::on_paddingYSpin_valueChanged(int value)
 {
     if (loading_ui) return;
-    DeviceMatrixSettings& dev_s = plugin->settings.GetForDevice(device_name);
-    dev_s.padding_y = value;
-    plugin->SaveSettings();
+    plugin->UpdateDeviceSettings(device_name, [value](DeviceMatrixSettings& settings)
+    {
+        settings.padding_y = value;
+    });
 }
